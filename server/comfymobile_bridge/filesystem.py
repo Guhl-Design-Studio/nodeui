@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ctypes
+import errno
 import mimetypes
 import os
 from pathlib import Path, PureWindowsPath
 import shutil
 import tempfile
+import sys
 from typing import BinaryIO
 
 
@@ -138,11 +141,89 @@ def unique_destination(root: Root, filename: str, subfolder: str = "") -> Path:
     stem, extension = Path(parts[0]).stem, Path(parts[0]).suffix
     candidate = folder / parts[0]
     counter = 1
-    while candidate.exists():
+    while candidate.exists() or candidate.is_symlink():
         candidate = folder / f"{stem}_{counter}{extension}"
         counter += 1
     # Validate again after folder creation, including any existing symlinks.
     return resolve(root, candidate.relative_to(root.path.resolve()).as_posix(), must_exist=False)
+
+
+def _rename_exclusive(source: Path, destination: Path) -> None:
+    """Atomic rename without replacement, including filesystems without hard links."""
+    if sys.platform == "win32":
+        # Unlike POSIX rename(), Windows rename never replaces an existing file.
+        os.rename(source, destination)
+        return
+    libc = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == "darwin":
+        rename = getattr(libc, "renamex_np", None)
+        if rename is None:
+            raise OSError(errno.ENOTSUP, "Exclusive rename is unavailable")
+        rename.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        result = rename(os.fsencode(source), os.fsencode(destination), 4)  # RENAME_EXCL
+    elif sys.platform.startswith("linux"):
+        rename = getattr(libc, "renameat2", None)
+        if rename is None:
+            raise OSError(errno.ENOTSUP, "Exclusive rename is unavailable")
+        rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        result = rename(-100, os.fsencode(source), -100, os.fsencode(destination), 1)  # AT_FDCWD, RENAME_NOREPLACE
+    else:
+        raise OSError(errno.ENOTSUP, "Exclusive rename is unavailable")
+    if result != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code))
+
+
+def publish_file(source: Path, destination: Path) -> None:
+    """Publish only a complete file; neither strategy can overwrite an existing name."""
+    try:
+        os.link(source, destination)
+    except OSError as error:
+        unsupported = {errno.EPERM, errno.EACCES, errno.EXDEV, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS}
+        if error.errno not in unsupported and getattr(error, "winerror", None) not in {1, 50}:
+            raise
+        try:
+            _rename_exclusive(source, destination)
+        except OSError as rename_error:
+            if rename_error.errno in {errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS, errno.EINVAL}:
+                raise FileAccessError("This destination cannot safely publish files without overwriting. Choose another location.") from None
+            raise
+
+
+def check_publish_support(folder: Path) -> None:
+    """Fail before streaming if neither safe publication strategy is supported."""
+    with tempfile.NamedTemporaryFile(dir=folder, prefix=".comfymobile-probe-", delete=False) as stream:
+        source = Path(stream.name)
+    destination = source.with_name(source.name + ".published")
+    published = False
+    try:
+        publish_file(source, destination)
+        published = True
+    finally:
+        source.unlink(missing_ok=True)
+        if published:
+            destination.unlink(missing_ok=True)
+
+
+def delete_file(root: Root, relative: str) -> None:
+    """Delete one file from the same winning location used by merged listings."""
+    parts = relative_parts(relative)
+    if not parts:
+        raise FileAccessError("Select an individual file to delete")
+    for base in root.paths:
+        target = _resolve_in(base, relative)
+        candidate = base.joinpath(*parts)
+        if candidate.is_symlink():
+            raise FileAccessError("Symbolic links cannot be deleted through the app")
+        if not target.exists():
+            continue
+        if not target.is_file():
+            raise FileAccessError("Only individual files can be deleted")
+        target.unlink()
+        return
+    raise FileNotFoundError("The file no longer exists")
 
 
 def write_upload(root: Root, filename: str, source: BinaryIO, subfolder: str = "", max_bytes: int = 100 * 1024 * 1024) -> dict:
@@ -173,7 +254,7 @@ def write_upload(root: Root, filename: str, source: BinaryIO, subfolder: str = "
             temporary.unlink(missing_ok=True)
 
 
-def copy_to_input(source_root: Root, relative: str, input_root: Root, subfolder: str = "ComfyMobile") -> dict:
+def copy_to_input(source_root: Root, relative: str, input_root: Root, subfolder: str = "") -> dict:
     source = resolve(source_root, relative)
     if not source.is_file():
         raise FileAccessError("Only files can be reused as inputs")

@@ -1,5 +1,6 @@
 """Downloads use local fixtures; no provider account or model download required."""
 import asyncio
+import errno
 from pathlib import Path
 import sys
 import tempfile
@@ -84,6 +85,23 @@ class DownloadTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(FileNotFoundError):
             self.manager.cancel(first["id"], "bob")
 
+    async def test_downloads_without_hard_links_keep_duplicate_files_and_clean_staging(self):
+        with patch("comfymobile_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
+            first, second = await asyncio.gather(self.finish(self.create()), self.finish(self.create()))
+        self.assertEqual([first["state"], second["state"]], ["completed", "completed"])
+        files = list((self.root.path / "nested").iterdir())
+        self.assertEqual({p.name for p in files}, {"actual.safetensors", "actual_1.safetensors"})
+        self.assertTrue(all(p.read_bytes() == b"model-data" for p in files))
+
+    async def test_unsupported_destination_is_rejected_before_streaming(self):
+        with patch("comfymobile_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
+            with patch("comfymobile_bridge.filesystem._rename_exclusive", side_effect=OSError(errno.ENOTSUP, "No exclusive rename")):
+                job = await self.finish(self.create("/large", "large.bin"))
+        self.assertEqual(job["state"], "failed")
+        self.assertEqual(job["receivedBytes"], 0)
+        self.assertIn("Choose another location", job["error"])
+        self.assertEqual(list((self.root.path / "nested").iterdir()), [])
+
     async def test_download_exceeds_upload_limit_and_unknown_size(self):
         job = await self.finish(self.create("/large", "large.bin"))
         self.assertEqual(job["state"], "completed")
@@ -111,7 +129,7 @@ class DownloadTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((self.root.path / "nested").exists())
 
     async def test_disk_failure_cleans_partial(self):
-        with patch("comfymobile_bridge.downloads.os.link", side_effect=OSError("disk full")):
+        with patch("comfymobile_bridge.filesystem.os.link", side_effect=OSError("disk full")):
             job = await self.finish(self.create())
         self.assertEqual(job["state"], "failed")
         self.assertEqual(list((self.root.path / "nested").iterdir()), [])

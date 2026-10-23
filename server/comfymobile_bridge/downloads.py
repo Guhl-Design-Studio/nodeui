@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
 import tempfile
 import time
@@ -10,7 +9,7 @@ from urllib.parse import quote, unquote, urljoin, urlsplit, urlunsplit
 import uuid
 
 import aiohttp
-from .filesystem import FileAccessError, Root, relative_parts, resolve, unique_destination, file_info
+from .filesystem import FileAccessError, Root, relative_parts, resolve, unique_destination, file_info, publish_file, check_publish_support
 
 
 def checked_url(value):
@@ -197,17 +196,18 @@ class DownloadManager:
                         proposed = name or (response.content_disposition.filename if response.content_disposition else None) or unquote(urlsplit(str(response.url)).path.rsplit("/", 1)[-1])
                         proposed = filename(proposed or "download")
                         destination = unique_destination(root, proposed, path)
+                        check_publish_support(destination.parent)
                         job.update(name=destination.name, totalBytes=None if response.headers.get("Content-Encoding") else response.content_length)
                         with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".comfymobile-download-", delete=False) as output:
                             temporary = Path(output.name)
                             async for chunk in response.content.iter_chunked(1024 * 1024):
                                 await asyncio.to_thread(output.write, chunk)
                                 job.update(receivedBytes=job["receivedBytes"] + len(chunk), updated=time.time())
-                        # Reserve by hard-linking the complete temporary file: atomic and never overwrites.
+                        # Both hard links and exclusive rename publish complete files atomically.
                         while True:
                             destination = unique_destination(root, proposed, path)
                             try:
-                                os.link(temporary, destination)
+                                publish_file(temporary, destination)
                                 break
                             except FileExistsError:
                                 continue

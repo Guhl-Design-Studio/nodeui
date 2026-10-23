@@ -1,6 +1,6 @@
 # Connection setup and technical help
 
-This guide copies the website's technical guidance for convenient use alongside the server helpers. [Companion installation and transfer troubleshooting](companion.md) are maintained here on GitHub. Repository access is required while the repository is private.
+This guide copies the website's technical guidance for convenient use alongside the server helpers. [Companion installation and transfer troubleshooting](companion.md) are maintained here on GitHub.
 
 ## Connect your computer
 

@@ -1,11 +1,13 @@
 import io
+import errno
+from unittest.mock import patch
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from comfymobile_bridge.filesystem import FileAccessError, Root, copy_to_input, list_files, relative_parts, resolve, write_upload
+from comfymobile_bridge.filesystem import FileAccessError, Root, copy_to_input, delete_file, list_files, relative_parts, resolve, write_upload
 
 
 class FileSystemTests(unittest.TestCase):
@@ -26,6 +28,44 @@ class FileSystemTests(unittest.TestCase):
 
     def test_accepts_nested_unicode_and_windows_separators(self):
         self.assertEqual(relative_parts("Krea 2\\日本\\image.png"), ("Krea 2", "日本", "image.png"))
+
+    def test_deletes_only_the_selected_file_and_preserves_parent_folder(self):
+        folder = self.folder / "nested"
+        folder.mkdir()
+        (folder / "a + 日本.png").write_bytes(b"selected")
+        (folder / "keep.png").write_bytes(b"keep")
+        delete_file(self.root, "nested/a + 日本.png")
+        self.assertEqual(list(folder.iterdir()), [folder / "keep.png"])
+        with self.assertRaises(FileNotFoundError):
+            delete_file(self.root, "nested/a + 日本.png")
+
+    def test_deletion_rejects_roots_directories_traversal_and_symlinks(self):
+        (self.folder / "nested").mkdir()
+        outside = self.base / "outside.png"
+        outside.write_bytes(b"outside")
+        target = self.folder / "keep.png"
+        target.write_bytes(b"inside")
+        (self.folder / "inside-link.png").symlink_to(target)
+        (self.folder / "outside-link.png").symlink_to(outside)
+        for path in ["", ".", "nested", "../outside.png", "C:\\outside.png", "inside-link.png", "outside-link.png"]:
+            with self.subTest(path=path), self.assertRaises(FileAccessError):
+                delete_file(self.root, path)
+        self.assertEqual(target.read_bytes(), b"inside")
+        self.assertEqual(outside.read_bytes(), b"outside")
+
+    def test_model_deletion_uses_the_first_matching_location(self):
+        root, extra = self.merged_root()
+        primary = self.folder / "shared.bin"
+        secondary = extra / "shared.bin"
+        primary.write_bytes(b"primary")
+        secondary.write_bytes(b"secondary")
+        (extra / "unique.bin").write_bytes(b"unique")
+        delete_file(root, "shared.bin")
+        self.assertFalse(primary.exists())
+        self.assertEqual(secondary.read_bytes(), b"secondary")
+        self.assertEqual(resolve(root, "shared.bin"), secondary.resolve())
+        delete_file(root, "unique.bin")
+        self.assertFalse((extra / "unique.bin").exists())
 
     def test_external_symlinks_are_not_listed_or_read(self):
         outside = self.base / "secret.txt"
@@ -73,7 +113,7 @@ class FileSystemTests(unittest.TestCase):
         source = output / "result.png"
         source.write_bytes(b"result")
         info = copy_to_input(Root("output", "Outputs", "output", output), "result.png", self.root)
-        self.assertEqual(info["path"], "ComfyMobile/result.png")
+        self.assertEqual(info["path"], "result.png")
         self.assertEqual(source.read_bytes(), resolve(self.root, info["path"]).read_bytes())
 
     def merged_root(self):
@@ -130,6 +170,46 @@ class FileSystemTests(unittest.TestCase):
     def test_merged_roots_cannot_be_writable(self):
         with self.assertRaises(ValueError):
             Root("input", "Inputs", "input", self.folder, True, (self.base,))
+
+
+
+
+class PublicationTests(unittest.TestCase):
+    def test_fallback_is_atomic_and_does_not_overwrite_existing_destination(self):
+        from comfymobile_bridge.filesystem import publish_file
+        with tempfile.TemporaryDirectory() as directory:
+            source, target = Path(directory) / ".staged", Path(directory) / "model.bin"
+            source.write_bytes(b"complete model")
+            with patch("comfymobile_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
+                target.write_bytes(b"existing")
+                with self.assertRaises(FileExistsError):
+                    publish_file(source, target)
+                self.assertEqual(target.read_bytes(), b"existing")
+                self.assertEqual(source.read_bytes(), b"complete model")
+                target.unlink()
+                publish_file(source, target)
+            self.assertEqual(target.read_bytes(), b"complete model")
+            self.assertFalse(source.exists())
+
+    def test_probe_cleans_up_and_reports_unsupported_publication(self):
+        from comfymobile_bridge.filesystem import check_publish_support, FileAccessError
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            with patch("comfymobile_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
+                check_publish_support(folder)
+                self.assertEqual(list(folder.iterdir()), [])
+                with patch("comfymobile_bridge.filesystem._rename_exclusive", side_effect=OSError(errno.ENOTSUP, "No exclusive rename")):
+                    with self.assertRaisesRegex(FileAccessError, "Choose another location"):
+                        check_publish_support(folder)
+            self.assertEqual(list(folder.iterdir()), [])
+
+    def test_real_io_failures_are_not_hidden_by_fallback(self):
+        from comfymobile_bridge.filesystem import publish_file
+        with patch("comfymobile_bridge.filesystem.os.link", side_effect=OSError(errno.ENOSPC, "Disk full")):
+            with patch("comfymobile_bridge.filesystem._rename_exclusive") as fallback:
+                with self.assertRaises(OSError):
+                    publish_file(Path("source"), Path("target"))
+                fallback.assert_not_called()
 
 
 if __name__ == "__main__":

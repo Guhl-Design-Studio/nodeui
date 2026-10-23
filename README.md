@@ -2,9 +2,9 @@
 
 Companion extension, installers, and technical help for an existing ComfyUI server.
 
-This repository is private. Sign in with a GitHub account that has repository access to read the guides or download release assets. An account without access may see a 404 page.
+This public repository contains the companion source, installation guides, and release downloads. A GitHub account is not required to read the guides or download release assets.
 
-- [Download the companion ZIP and Windows/macOS installers](https://github.com/aguhl0614/nodeui/releases/latest)
+- [Download the companion ZIP and Windows/macOS installers](https://github.com/Guhl-Design-Studio/nodeui/releases/latest)
 - [Install, update, verify, or remove the companion](docs/companion.md)
 - [Connection setup, controls, and troubleshooting](docs/technical-help.md)
 - [Companion API reference](server/README.md)
@@ -29,4 +29,4 @@ Build the installable archive after changing companion runtime files:
 python3 scripts/package_companion.py
 ```
 
-The archive contains only `__init__.py`, `filesystem.py`, `routes.py`, and `downloads.py` under `comfymobile_bridge/`. Publish that ZIP and both installers together as release assets. Keep this repository limited to companion helpers and technical documentation.
+The archive contains only `__init__.py`, `filesystem.py`, `routes.py`, `downloads.py`, `resources.py`, `resource_gpu.py`, and `resource_windows.py` under `comfymobile_bridge/`. Publish that ZIP and both installers together as release assets. Keep this repository limited to companion helpers and technical documentation.

@@ -32,7 +32,7 @@ cleanup() {
 }
 trap cleanup EXIT
 /usr/bin/unzip -q "$archive" -d "$temporary"
-for runtime_file in __init__.py filesystem.py routes.py downloads.py; do
+for runtime_file in __init__.py filesystem.py routes.py downloads.py resources.py resource_gpu.py resource_windows.py; do
     if [[ ! -f "$temporary/comfymobile_bridge/$runtime_file" ]]; then
         echo "The archive is missing runtime file $runtime_file." >&2
         exit 1

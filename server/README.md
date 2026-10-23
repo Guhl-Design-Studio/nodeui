@@ -1,8 +1,8 @@
 # NodeUI companion
 
-See [installation instructions](../docs/companion.md) and [release downloads](https://github.com/aguhl0614/nodeui/releases/latest). Copy `comfymobile_bridge` into your ComfyUI `custom_nodes` directory and restart ComfyUI once. No separate process, credentials, port, or frontend extension is installed. It registers routes on the same ComfyUI HTTP server.
+Copy `comfymobile_bridge` into your ComfyUI `custom_nodes` directory and restart ComfyUI once. No separate process, credentials, port, or frontend extension is installed. It registers routes on the same ComfyUI HTTP server.
 
-Windows portable example: `C:\path\to\ComfyUI\custom_nodes\comfymobile_bridge`.
+Windows portable example: `E:\ComfyUI\ComfyUI\custom_nodes\comfymobile_bridge`.
 
 macOS example: `<ComfyUI>/custom_nodes/comfymobile_bridge`.
 
@@ -17,11 +17,13 @@ All file paths are relative to a root reported by capabilities. Root paths are n
 | Method | Route | Parameters / body |
 | --- | --- | --- |
 | GET | `/comfymobile/v1/capabilities` | Returns `apiVersion`, `roots`, `thumbnails`, `maxUploadBytes` |
+| GET | `/comfymobile/v1/resources` | CPU, RAM and primary GPU telemetry; companion 1.4.0+ |
 | GET | `/comfymobile/v1/files` | `root`, `path`, `offset=0`, `limit=100`, optional `search`; returns `entries`, `total`, `nextOffset` |
+| DELETE | `/comfymobile/v1/files` | `root`, `path`; deletes one file, returns HTTP 204 (companion 1.3.0+) |
 | GET | `/comfymobile/v1/content` | `root`, `path`; streams content, supports HTTP Range through aiohttp |
 | GET | `/comfymobile/v1/thumbnail` | `root`, `path`, optional `width=384` (64–1024); image thumbnails |
 | POST | `/comfymobile/v1/upload` | `root`, optional `path` query; one multipart file; inputs/workflows only, no overwrite |
-| POST | `/comfymobile/v1/copy` | JSON `{"root":"output","path":"folder/image.png"}`; copies into `input/ComfyMobile`, returns ComfyUI-compatible `name`, `subfolder`, `type` |
+| POST | `/comfymobile/v1/copy` | JSON `{"root":"output","path":"folder/image.png"}`; copies into the main `input` folder, returns ComfyUI-compatible `name`, `subfolder`, `type` |
 
 The legacy multipart upload route accepts Inputs and Workflows only. Model and output folders use the explicit destination API described below for device uploads and URL downloads. Existing input uploads receive a numeric suffix rather than overwriting. Workflow saving uses ComfyUI's existing userdata endpoint and the app's conflict check. The companion respects ComfyUI's request-user workflow folder.
 
@@ -41,7 +43,7 @@ Downloads run on the server, with two concurrent transfers and a queue. They con
 
 Each root now has a separate `downloadDestinations` array containing server-issued location IDs and display paths. In merged model categories the app lets you choose a physical location, defaulting to the first one containing the browsed subfolder, or the first configured location otherwise. Missing destination subfolders are created. The legacy multipart permissions and merged browsing/search order remain unchanged; model roots still report `writable: false` for that route. Companion 1.2.0 adds a separate device-file upload route using these explicit destinations. Custom-node/configuration locations remain excluded. Display paths are returned for destination selection, but filesystem paths are never accepted from clients.
 
-Files stream to a hidden temporary file on the destination filesystem. Completed files are atomically published without replacing existing files; duplicate names receive numeric suffixes. Downloads have no 100 MB upload limit. Failed/cancelled transfers remove their temporary files. After an abrupt server/process termination, a hidden `.comfymobile-download-*` temporary file may remain and can be removed while the server is stopped.
+Files stream to a hidden temporary file on the destination filesystem. Completed files are atomically published using hard links or an exclusive rename, without replacing existing files; duplicate names receive numeric suffixes. Downloads have no 100 MB upload limit. Failed/cancelled transfers remove their temporary files. After an abrupt server/process termination, a hidden `.comfymobile-download-*` temporary file may remain and can be removed while the server is stopped.
 
 | Method | Route | Parameters / body |
 | --- | --- | --- |
@@ -56,7 +58,7 @@ Files stream to a hidden temporary file on the destination filesystem. Completed
 
 Job fields: `id`, `root`, `path`, `name`, `state` (`queued`, `downloading`, `completed`, `failed`, `cancelled`), `receivedBytes`, nullable `totalBytes`, nullable `error`, nullable `provider`, and `updated`. `path` is the destination folder during transfer and the completed relative filename after success. Jobs are scoped using ComfyUI's request-user workflow directory. Older companions omit the added capabilities; the app directs users to update rather than attempting an incompatible fallback.
 
-
+Local UI fixture: run `scripts/download_test_server.py` using Python with aiohttp installed, then run `DownloadUITests` on an iOS simulator. The fixture uses the actual companion routes and writes only to a temporary folder. Provider discovery and transfer tests use mocked provider responses and local HTTP fixtures, including a 101 MB streamed transfer.
 
 
 ## Device file uploads (companion 1.2.0)
@@ -65,4 +67,37 @@ Browse to a model, output or temporary folder and choose **File actions → Uplo
 
 Capabilities now advertise `fileUploads: true` and `version: "1.2.0"`. The new `POST /comfymobile/v1/upload-file` endpoint accepts the raw file body and query parameters `root`, `path`, `location`, and `filename`. Location IDs come from `/downloads/locations`, including the preferred physical location for the selected subfolder. Unknown locations, path traversal and outward symlinks are rejected. Only configured roots can receive files; the request must resolve to a ComfyUI user. Existing files receive numeric suffixes instead of being replaced.
 
-The server streams uploaded chunks into a hidden temporary file on the destination filesystem. This endpoint has no 100 MB multipart limit. A complete file is published atomically without replacing another file; interrupted or cancelled transfers remove the temporary file. A server/process crash may leave `.comfymobile-upload-*` files, which can be removed while ComfyUI is stopped. Uploads run only while the app remains connected; they are separate from the server-owned Downloads queue.
+The app uploads directly from the security-scoped file URL, and the server streams chunks into a hidden temporary file on the destination filesystem. This endpoint has no 100 MB multipart limit. A complete file is published atomically without replacing another file; interrupted or cancelled transfers remove the temporary file. A server/process crash may leave `.comfymobile-upload-*` files, which can be removed while ComfyUI is stopped. Uploads run only while the app remains connected; they are separate from the server-owned Downloads queue.
+
+Validation includes a 101 MB streamed device upload, selected secondary model location, duplicate names, rejected paths/locations and cancelled-transfer cleanup. The local fixture on port 18767 also supports `COMFYMOBILE_UPLOAD_TEST_SERVER=http://127.0.0.1:18767 swift test --package-path Packages/ComfyNetworking` for a native disk-to-server upload round trip. UI tests verify the model-folder menu, selected destination and native Files picker alongside the existing URL download flow.
+
+## File deletion (companion 1.3.0)
+
+Update the installed companion and restart ComfyUI to enable **File Browser → swipe left → Delete**, or hold a file and choose **Delete file**. The app names the file and server before confirmation. Successful deletion refreshes the current folder; a failed request leaves the file listed and displays the error.
+
+Capabilities advertise `fileDeletion: true`, `version: "1.3.0"`, and `deletable: true` on configured roots. `DELETE /comfymobile/v1/files?root=...&path=...` deletes one regular file in Inputs, Outputs, Temporary, the current user's Workflows, or configured model locations. Directory/root deletion, symbolic links, traversal, and paths outside configured roots are rejected. Merged model categories delete only the first matching file shown by browsing; another copy in a later location can appear after refresh. A valid ComfyUI request user is required. A missing file returns 404; permission errors return 403. Existing `writable` permissions continue to describe the legacy upload route.
+
+Saved workflows can also be deleted through ComfyUI's native userdata API without the companion. Cloud input/output assets use the authenticated asset API; Cloud files still in use report the server's refusal. The app does not expose deletion for Cloud model listings that lack an asset ID.
+
+Run `scripts/file_delete_test_server.py` with aiohttp to exercise the real companion against disposable files on loopback port 18785. `FileDeletionUITests` checks cancellation, swipe/context-menu deletion, failed deletion, nested folders, and projected grid landmarks while panning and zooming.
+
+## Resource monitoring (companion 1.4.0)
+
+Capabilities now advertise `resourceMonitoring: true` and `version: "1.4.0"`. `GET /comfymobile/v1/resources` returns a Unix-seconds `sampledAt`, nullable `cpuPercent`, `ram: {usedBytes, totalBytes}`, and nullable `gpu: {id, name, utilizationPercent, memoryKind, memory: {usedBytes, totalBytes}}`. Unknown readings are JSON null. Memory values are bytes; utilization values are percentages from 0 to 100. CPU and memory usage describe the whole server. The GPU is ComfyUI's selected primary device rather than an aggregate across adapters.
+
+CPU uses successive system CPU-time samples; its first reading is unavailable while the sampler primes. RAM usage is total minus available memory. `psutil` is already a standard ComfyUI dependency; when it is missing, CPU/RAM readings remain unavailable and the route continues working.
+
+GPU readers use these read-only sources without administrator access or new Python dependencies:
+
+- NVIDIA on Windows/Linux: `nvidia-smi` from the installed driver, matching the selected GPU by UUID/PCI identity. Unknown driver values remain null.
+- AMD on Linux: `amdgpu` sysfs utilization and VRAM counters, matching physical PCI identity, including HIP's device-visibility remapping. Missing/unreadable counters remain null.
+- AMD on Windows: DXGI adapter identity and WDDM PDH performance counters. Aggregate process contributions per engine, then report the busiest engine. The rate counter needs a second sample before utilization is available. Names are matched only when unique; ambiguous identical adapters remain unavailable rather than reporting another GPU.
+- Apple and AMD on macOS: IORegistry accelerator performance counters exposed by the driver. Apple GPU memory is `In use system memory` against total physical RAM, labelled shared memory. It is not a separate VRAM pool and must not be added to RAM usage. AMD dedicated-memory totals can use ComfyUI's memory reader when the OS omits that total.
+
+Driver/OS combinations may omit individual counters. ComfyUI's own GPU-memory readings remain available when a utilization provider fails; MPS system-memory totals are never substituted for actual GPU allocation. All sampling runs outside the HTTP event loop, is serialized and cached for one second across clients, and external tools have a one-second timeout. Windows counter handles are closed on server shutdown. Polling is driven by foreground clients, so there is no always-running sampling worker.
+
+Install the updated archive and restart ComfyUI to enable the additional telemetry. Standard ComfyUI and older companions continue supplying memory-only readings to the app. No deployment or server restart is performed by building the iOS app.
+
+## Safe transfer publication (companion 1.4.1)
+
+Device-file uploads and URL downloads also work when a destination does not support hard links. The companion falls back to an atomic rename that refuses to replace an existing file (Windows rename, macOS RENAME_EXCL, or Linux RENAME_NOREPLACE). Concurrent duplicate names receive numeric suffixes with either strategy. A small hidden probe checks support before the upload body or download file is streamed. If neither safe method is supported, the transfer fails with an explicit instruction to choose another location; partial files are never exposed under their final names.

@@ -1,11 +1,13 @@
 """Exercise the real aiohttp handlers with minimal ComfyUI folder/user fixtures."""
 import importlib
+import errno
 import io
 from pathlib import Path
 import sys
 import tempfile
 import types
 import unittest
+from unittest.mock import patch
 
 try:
     from aiohttp import FormData, web
@@ -59,6 +61,18 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("path", value["roots"][0])
         self.assertTrue(value["downloads"])
         self.assertTrue(value["fileUploads"])
+        self.assertTrue(value["fileDeletion"])
+        self.assertTrue(value["resourceMonitoring"])
+        self.assertEqual(value["version"], "1.4.1")
+        self.assertTrue(all(root["deletable"] for root in value["roots"]))
+
+    async def test_resource_endpoint_returns_optional_sensors_without_gpu_drivers(self):
+        sample = {"sampledAt": 1792695000, "cpuPercent": None,
+                  "ram": {"usedBytes": 1024, "totalBytes": 8192}, "gpu": None}
+        with patch.object(self.routes.resource_collector, "sample", return_value=sample):
+            response = await self.client.get("/comfymobile/v1/resources")
+            self.assertEqual(response.status, 200)
+            self.assertEqual(await response.json(), sample)
 
     async def test_model_category_merges_locations_and_keeps_legacy_indexes(self):
         first = self.base / "models"
@@ -73,7 +87,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         })
         caps = await (await self.client.get("/comfymobile/v1/capabilities")).json()
         models = [v for v in caps["roots"] if v["kind"] == "models"]
-        self.assertEqual([{k: v for k, v in root.items() if k != "downloadDestinations"} for root in models], [{"id": "model:loras", "name": "Loras", "kind": "models", "writable": False}])
+        self.assertEqual([{k: v for k, v in root.items() if k != "downloadDestinations"} for root in models], [{"id": "model:loras", "name": "Loras", "kind": "models", "writable": False, "deletable": True}])
         self.assertEqual(len(models[0]["downloadDestinations"]), 2)
         listing = await (await self.client.get("/comfymobile/v1/files?root=model:loras")).json()
         self.assertEqual([v["name"] for v in listing["entries"]], ["extra.bin", "shared.bin"])
@@ -93,6 +107,33 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await response.read(), b"2345")
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
 
+    async def test_delete_files_in_each_configured_root(self):
+        for root, folder in [("input", "input"), ("output", "output"), ("temp", "temp"), ("workflows", "workflows"), ("model:loras", "models")]:
+            with self.subTest(root=root):
+                path = self.base / folder / "a + 日本.bin"
+                path.write_bytes(b"remove")
+                keep = self.base / folder / "keep.bin"
+                keep.write_bytes(b"keep")
+                response = await self.client.delete("/comfymobile/v1/files", params={"root": root, "path": path.name})
+                self.assertEqual(response.status, 204)
+                self.assertFalse(path.exists())
+                self.assertEqual(keep.read_bytes(), b"keep")
+                response = await self.client.delete("/comfymobile/v1/files", params={"root": root, "path": path.name})
+                self.assertEqual(response.status, 404)
+
+    async def test_delete_rejects_directories_escapes_and_missing_user(self):
+        (self.base / "output" / "nested").mkdir()
+        for query in [{"root": "unknown", "path": "a.bin"}, {"root": "output", "path": ""},
+                      {"root": "output", "path": "nested"}, {"root": "output", "path": "../secret"}]:
+            response = await self.client.delete("/comfymobile/v1/files", params=query)
+            self.assertEqual(response.status, 403)
+        file = self.base / "output" / "keep.bin"
+        file.write_bytes(b"keep")
+        self.routes.PromptServer.instance.user_manager.get_request_user_filepath = lambda *args, **kwargs: None
+        response = await self.client.delete("/comfymobile/v1/files", params={"root": "output", "path": file.name})
+        self.assertEqual(response.status, 403)
+        self.assertTrue(file.exists())
+
     async def test_upload_and_copy(self):
         data = FormData()
         data.add_field("file", b"new image", filename="a.png", content_type="image/png")
@@ -103,7 +144,9 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         response = await self.client.post("/comfymobile/v1/copy", json={"root": "output", "path": "result.png"})
         value = await response.json()
         self.assertEqual(response.status, 200)
-        self.assertEqual(value["subfolder"], "ComfyMobile")
+        self.assertEqual(value["subfolder"], "")
+        self.assertEqual(value["file"]["path"], "result.png")
+        self.assertEqual((self.base / "input" / "result.png").read_bytes(), b"result")
         self.assertEqual(value["type"], "input")
 
     async def test_thumbnail_size_and_image_format(self):
@@ -126,6 +169,24 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         response = await self.client.post("/comfymobile/v1/copy", json={"root": "model:loras:0", "path": "weights.bin"})
         self.assertEqual(response.status, 403)
 
+
+    async def test_device_upload_without_hard_links_preserves_duplicate_files(self):
+        query = {"root": "output", "location": self.routes.location_id(self.base / "output"), "filename": "model.bin"}
+        with patch("comfymobile_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
+            for name in ["model.bin", "model_1.bin"]:
+                response = await self.client.post("/comfymobile/v1/upload-file", params=query, data=b"complete")
+                self.assertEqual(response.status, 201)
+                self.assertEqual((await response.json())["name"], name)
+        self.assertEqual({p.name for p in (self.base / "output").iterdir()}, {"model.bin", "model_1.bin"})
+        self.assertTrue(all(p.read_bytes() == b"complete" for p in (self.base / "output").iterdir()))
+
+    async def test_unsupported_upload_destination_does_not_publish_a_file(self):
+        query = {"root": "output", "location": self.routes.location_id(self.base / "output"), "filename": "model.bin"}
+        with patch("comfymobile_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
+            with patch("comfymobile_bridge.filesystem._rename_exclusive", side_effect=OSError(errno.ENOTSUP, "No exclusive rename")):
+                response = await self.client.post("/comfymobile/v1/upload-file", params=query, data=b"complete")
+        self.assertEqual(response.status, 403)
+        self.assertEqual(list((self.base / "output").iterdir()), [])
 
     async def test_device_upload_selects_location_and_preserves_existing_files(self):
         extra = self.base / "extra_models"

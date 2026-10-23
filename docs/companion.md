@@ -4,11 +4,11 @@ The companion is a small ComfyUI custom-node extension that enables full folder 
 
 ## Downloads and access
 
-Open [the latest helper release](https://github.com/aguhl0614/nodeui/releases/latest) while signed in to a GitHub account with repository access. This repository and its releases are private; a 404 may mean your account lacks access.
+Open [the latest helper release](https://github.com/Guhl-Design-Studio/nodeui/releases/latest). This repository and its release downloads are public.
 
 Download the named `comfymobile_bridge.zip` asset, plus `install-windows.ps1` or `install-macos.sh` if you want an installer. Keep the ZIP and installer together. Use the named companion ZIP rather than GitHub's automatic source-code archive. Review scripts before running them; manual installation is also supported.
 
-Use companion **1.2.0 or later** for device file uploads. Version 1.1.0 added server-side URL downloads; 1.2.0 includes both capabilities.
+Use the latest companion, currently **1.4.1**. It includes device uploads, URL downloads, file deletion, server resource monitoring, and safe publication of completed transfers.
 
 ## Manual installation — Windows or macOS
 
@@ -18,7 +18,7 @@ Use companion **1.2.0 or later** for device file uploads. Version 1.1.0 added se
 4. Wait until the generation queue is idle, then restart ComfyUI once using its normal launcher.
 5. Reconnect and refresh **File Browser → Locations**.
 
-The internal folder name `comfymobile_bridge` is retained for compatibility. The ZIP contains only four companion runtime files.
+The internal folder name `comfymobile_bridge` is retained for compatibility. The ZIP contains only the seven companion runtime files.
 
 ## Windows installer
 
@@ -52,7 +52,7 @@ Invoke-RestMethod 'http://localhost:8188/comfymobile/v1/capabilities'
 curl 'http://localhost:8188/comfymobile/v1/capabilities'
 ```
 
-Use your configured port if it differs from 8188. From another device, replace `localhost` with the ComfyUI computer's reachable address. A working installation reports `apiVersion: 1`, its companion version, and available `roots`. Version 1.2.0 also reports `downloads: true` and `fileUploads: true`.
+Use your configured port if it differs from 8188. From another device, replace `localhost` with the ComfyUI computer's reachable address. A working installation reports `apiVersion: 1`, its companion version, and available `roots`. Version 1.4.1 reports `downloads: true`, `fileUploads: true`, `fileDeletion: true`, and `resourceMonitoring: true`.
 
 ## Update, restore, or remove
 
@@ -64,7 +64,7 @@ To remove the companion, stop ComfyUI and move `custom_nodes/comfymobile_bridge`
 
 ## Companion troubleshooting
 
-- **GitHub returns 404:** sign in to an account with access to this private repository. Website downloads now point to GitHub and require the same access.
+- **GitHub returns 404:** use the current public repository linked above and its latest release. If a download was moved, return to the release page and select the named asset again.
 - **Folders, uploads, or downloads are missing:** install or update the companion, restart ComfyUI when idle, and refresh Locations. An older companion may lack newer transfer capabilities. Without the companion, only files indexed by standard ComfyUI APIs are available.
 - **A provider download is restricted:** Hugging Face or Civitai may require an account, permission, or acceptance of a model license. Add an appropriate key under **Settings → Download keys**. Keys are stored in the device Keychain and sent to the selected server when needed. Only connect to servers you trust.
 - **A transfer stops:** server-owned URL downloads continue after the client closes but stop when ComfyUI restarts. Device uploads require the client to remain open and connected. Server restarts clear the in-memory download history.

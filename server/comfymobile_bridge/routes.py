@@ -6,18 +6,18 @@ from functools import wraps
 import io
 import logging
 import mimetypes
-import os
 from pathlib import Path
 import tempfile
 import hashlib
 import aiohttp
 from .downloads import DownloadManager, checked_url, discover, provider
+from .resources import collector as resource_collector, current_device
 
 from aiohttp import web
 import folder_paths
 from server import PromptServer
 
-from .filesystem import relative_parts, FileAccessError, Root, copy_to_input, file_info, list_files, resolve, unique_destination, write_upload
+from .filesystem import relative_parts, FileAccessError, Root, copy_to_input, delete_file, file_info, list_files, resolve, unique_destination, write_upload, publish_file, check_publish_support
 
 API_VERSION = 1
 PREFIX = "/comfymobile/v1"
@@ -90,7 +90,13 @@ async def capabilities(request):
         thumbnails = True
     except ImportError:
         thumbnails = False
-    return web.json_response({"apiVersion": API_VERSION, "version": "1.2.0", "downloads": True, "fileUploads": True, "roots": [download_root(root) for root in roots_for(request).values()], "thumbnails": thumbnails, "maxUploadBytes": 100 * 1024 * 1024})
+    return web.json_response({"apiVersion": API_VERSION, "version": "1.4.1", "resourceMonitoring": True, "downloads": True, "fileUploads": True, "fileDeletion": True, "roots": [download_root(root) for root in roots_for(request).values()], "thumbnails": thumbnails, "maxUploadBytes": 100 * 1024 * 1024})
+
+
+@routes.get(PREFIX + "/resources")
+async def resources(request):
+    device = current_device()
+    return web.json_response(await asyncio.to_thread(resource_collector.sample, device))
 
 
 @routes.get(PREFIX + "/files")
@@ -99,6 +105,14 @@ async def files(request):
     root = get_root(request)
     result = await asyncio.to_thread(list_files, root, request.query.get("path", ""), offset=int(request.query.get("offset", "0")), limit=int(request.query.get("limit", "100")), search=request.query.get("search", ""))
     return web.json_response(result)
+
+
+@routes.delete(PREFIX + "/files")
+@guarded
+async def remove_file(request):
+    download_owner(request)
+    await asyncio.to_thread(delete_file, get_root(request), request.query.get("path", ""))
+    return web.Response(status=204)
 
 
 @routes.get(PREFIX + "/content")
@@ -172,7 +186,8 @@ async def copy(request):
     if root.kind not in {"input", "output", "temp"}:
         raise FileAccessError("Only media folders can be reused as inputs")
     result = await asyncio.to_thread(copy_to_input, root, body["path"], get_root(request, "input"))
-    return web.json_response({"name": result["name"], "subfolder": str(Path(result["path"]).parent).replace("\\", "/"), "type": "input", "file": result})
+    folder = str(Path(result["path"]).parent).replace("\\", "/")
+    return web.json_response({"name": result["name"], "subfolder": "" if folder == "." else folder, "type": "input", "file": result})
 
 
 def location_id(path):
@@ -181,6 +196,7 @@ def location_id(path):
 
 def download_root(root):
     value = root.public()
+    value["deletable"] = True
     value["downloadDestinations"] = [{"id": location_id(path), "name": str(path)} for path in root.paths]
     return value
 
@@ -204,6 +220,7 @@ async def upload_file(request):
         raise ValueError("Select a valid upload location")
     target = Root(root.id, root.name, root.kind, base, True)
     destination = await asyncio.to_thread(unique_destination, target, request.query.get("filename", ""), request.query.get("path", ""))
+    await asyncio.to_thread(check_publish_support, destination.parent)
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".comfymobile-upload-", delete=False) as output:
@@ -211,8 +228,15 @@ async def upload_file(request):
             async for chunk in request.content.iter_chunked(1024 * 1024):
                 await asyncio.to_thread(output.write, chunk)
             await asyncio.to_thread(output.flush)
-        # Publish only a complete transfer, without replacing another file.
-        await asyncio.to_thread(os.link, temporary, destination)
+        # Keep retries and publication together so cancellation cannot leave an
+        # unobserved worker publishing a file after the request has ended.
+        while True:
+            destination = unique_destination(target, request.query.get("filename", ""), request.query.get("path", ""))
+            try:
+                publish_file(temporary, destination)
+                break
+            except FileExistsError:
+                continue
         return web.json_response(await asyncio.to_thread(file_info, target, destination), status=201)
     finally:
         if temporary is not None:
@@ -325,9 +349,14 @@ async def retry_download(request):
 DOWNLOAD_MANAGER_KEY = web.AppKey("comfymobile_downloads", DownloadManager)
 
 
+async def close_resources(app):
+    await asyncio.to_thread(resource_collector.close)
+
+
 def configure_downloads(app):
     app[DOWNLOAD_MANAGER_KEY] = DownloadManager()
     app.on_cleanup.append(close_downloads)
+    app.on_cleanup.append(close_resources)
 
 
 if hasattr(PromptServer.instance, "app"):
