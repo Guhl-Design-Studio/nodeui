@@ -9,11 +9,11 @@ This public repository contains the companion source, installation guides, and r
 - [Connection setup, controls, and troubleshooting](docs/technical-help.md)
 - [Companion API reference](server/README.md)
 
-Download `comfymobile_bridge.zip` and the installer for your computer into the same folder. GitHub's automatic “Source code” archives are repository snapshots; use the named companion ZIP for installation.
+Download `nodeui_bridge.zip` and the installer for your computer into the same folder. GitHub's automatic “Source code” archives are repository snapshots; use the named companion ZIP for installation.
 
 ## Helper maintenance
 
-The companion uses ComfyUI's existing server and port. Its runtime lives in `server/comfymobile_bridge/`; the installers live in `distribution/`.
+The companion uses ComfyUI's existing server and port. Its runtime lives in `server/nodeui_bridge/`; the installers live in `distribution/`.
 
 Run the existing companion tests from the repository root:
 
@@ -29,4 +29,4 @@ Build the installable archive after changing companion runtime files:
 python3 scripts/package_companion.py
 ```
 
-The archive contains only `__init__.py`, `filesystem.py`, `routes.py`, `downloads.py`, `resources.py`, `resource_gpu.py`, and `resource_windows.py` under `comfymobile_bridge/`. Publish that ZIP and both installers together as release assets. Keep this repository limited to companion helpers and technical documentation.
+The archive contains only `__init__.py`, `filesystem.py`, `routes.py`, `downloads.py`, `resources.py`, `resource_gpu.py`, and `resource_windows.py` under `nodeui_bridge/`. Publish that ZIP and both installers together as release assets. Keep this repository limited to companion helpers and technical documentation.

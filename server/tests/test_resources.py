@@ -8,9 +8,9 @@ import unittest
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from comfymobile_bridge import resource_gpu as gpu
-from comfymobile_bridge.resource_windows import WindowsGPUReader, aggregate_engines, adapter_memory
-from comfymobile_bridge.resources import ResourceCollector, primary_device
+from nodeui_bridge import resource_gpu as gpu
+from nodeui_bridge.resource_windows import WindowsGPUReader, aggregate_engines, adapter_memory
+from nodeui_bridge.resources import ResourceCollector, primary_device
 
 
 class ResourceTests(unittest.TestCase):
@@ -86,7 +86,7 @@ class ResourceTests(unittest.TestCase):
         reader.pdh = types.SimpleNamespace(PdhCollectQueryData=lambda _: 0)
         reader.engines, reader.dedicated, reader.primed = "engines", "memory", False
         reader.values = lambda counter: [("pid_1_luid_0x00000000_0x000000ff_phys_0_eng_0", 80)] if counter == "engines" else [("luid_0x00000000_0x000000ff_phys_0", 4096)]
-        with patch("comfymobile_bridge.resource_windows.adapters", return_value=[{"id": "luid-ff", "name": "AMD Example", "luid": (0, 255), "total": 8192}]):
+        with patch("nodeui_bridge.resource_windows.adapters", return_value=[{"id": "luid-ff", "name": "AMD Example", "luid": (0, 255), "total": 8192}]):
             first = reader.read({"name": "AMD Example"})
             second = reader.read({"name": "AMD Example"})
             self.assertIsNone(reader.read({"name": "Other GPU"}))
@@ -111,9 +111,9 @@ class ResourceTests(unittest.TestCase):
         collector = ResourceCollector()
         primary = {"id": "gpu0", "name": "Example", "memoryKind": "dedicated", "memory": gpu.memory(2, 8)}
         with patch.object(collector, "cpu_ram", return_value=(30, gpu.memory(10, 32))) as cpu, \
-             patch("comfymobile_bridge.resources.primary_device", return_value=primary), \
+             patch("nodeui_bridge.resources.primary_device", return_value=primary), \
              patch.object(collector.gpu, "read", side_effect=OSError("Driver missing")), \
-             patch("comfymobile_bridge.resources.time.monotonic", side_effect=[5, 5.5]):
+             patch("nodeui_bridge.resources.time.monotonic", side_effect=[5, 5.5]):
             first = collector.sample()
             second = collector.sample()
         self.assertIs(first, second)
@@ -127,13 +127,13 @@ class ResourceTests(unittest.TestCase):
         psutil = types.SimpleNamespace(cpu_times=lambda: types.SimpleNamespace(_asdict=lambda: {"user": 20, "idle": 40}),
                                        virtual_memory=lambda: types.SimpleNamespace(total=64, available=48))
         collector.previous_cpu = (20, 10, 5)
-        with patch.dict(sys.modules, {"psutil": psutil}), patch("comfymobile_bridge.resources.time.monotonic", return_value=100):
+        with patch.dict(sys.modules, {"psutil": psutil}), patch("nodeui_bridge.resources.time.monotonic", return_value=100):
             cpu, ram = collector.cpu_ram()
         self.assertIsNone(cpu, "Do not show a minutes-long average as a live CPU reading")
         self.assertEqual(ram["usedBytes"], 16)
 
     def test_provider_external_command_is_bounded_without_shell(self):
-        with patch("comfymobile_bridge.resource_gpu.subprocess.run", return_value=types.SimpleNamespace(stdout=b"")) as run:
+        with patch("nodeui_bridge.resource_gpu.subprocess.run", return_value=types.SimpleNamespace(stdout=b"")) as run:
             gpu.nvidia({"uuid": "not-found"})
         self.assertEqual(run.call_args.kwargs["timeout"], 1)
         self.assertNotIn("shell", run.call_args.kwargs)
@@ -141,8 +141,8 @@ class ResourceTests(unittest.TestCase):
     def test_selected_device_is_passed_to_worker_and_changes_invalidate_cache(self):
         collector = ResourceCollector()
         with patch.object(collector, "cpu_ram", return_value=(30, gpu.memory(10, 32))), \
-             patch("comfymobile_bridge.resources.primary_device", return_value=None) as primary, \
-             patch("comfymobile_bridge.resources.time.monotonic", return_value=5):
+             patch("nodeui_bridge.resources.primary_device", return_value=None) as primary, \
+             patch("nodeui_bridge.resources.time.monotonic", return_value=5):
             collector.sample("cuda:1")
             primary.assert_called_with("cuda:1")
             collector.sample("cuda:0")
@@ -165,7 +165,7 @@ class ResourceTests(unittest.TestCase):
                 comfy = types.ModuleType("comfy")
                 comfy.model_management = management
                 with patch.dict(sys.modules, {"comfy": comfy, "comfy.model_management": management}), \
-                     patch("comfymobile_bridge.resources.hip_pci", return_value="0000:04:00.0"):
+                     patch("nodeui_bridge.resources.hip_pci", return_value="0000:04:00.0"):
                     result = primary_device(selected)
                 properties_for.assert_called_once_with(selected)
                 self.assertEqual(result["uuid"], "GPU-bbbb")

@@ -2,4 +2,4 @@
 __pycache__/
 *.pyc
 .venv/
-/distribution/comfymobile_bridge.zip
+/distribution/nodeui_bridge.zip

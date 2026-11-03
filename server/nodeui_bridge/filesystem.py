@@ -194,7 +194,7 @@ def publish_file(source: Path, destination: Path) -> None:
 
 def check_publish_support(folder: Path) -> None:
     """Fail before streaming if neither safe publication strategy is supported."""
-    with tempfile.NamedTemporaryFile(dir=folder, prefix=".comfymobile-probe-", delete=False) as stream:
+    with tempfile.NamedTemporaryFile(dir=folder, prefix=".nodeui-probe-", delete=False) as stream:
         source = Path(stream.name)
     destination = source.with_name(source.name + ".published")
     published = False
@@ -231,7 +231,7 @@ def write_upload(root: Root, filename: str, source: BinaryIO, subfolder: str = "
     temporary = None
     created = False
     try:
-        with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".comfymobile-", delete=False) as output:
+        with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".nodeui-", delete=False) as output:
             temporary = Path(output.name)
             total = 0
             while chunk := source.read(1024 * 1024):

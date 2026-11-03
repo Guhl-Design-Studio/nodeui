@@ -20,7 +20,7 @@ from server import PromptServer
 from .filesystem import relative_parts, FileAccessError, Root, copy_to_input, delete_file, file_info, list_files, resolve, unique_destination, write_upload, publish_file, check_publish_support
 
 API_VERSION = 1
-PREFIX = "/comfymobile/v1"
+PREFIX = "/nodeui/v1"
 routes = PromptServer.instance.routes
 
 
@@ -90,7 +90,7 @@ async def capabilities(request):
         thumbnails = True
     except ImportError:
         thumbnails = False
-    return web.json_response({"apiVersion": API_VERSION, "version": "1.4.1", "resourceMonitoring": True, "downloads": True, "fileUploads": True, "fileDeletion": True, "roots": [download_root(root) for root in roots_for(request).values()], "thumbnails": thumbnails, "maxUploadBytes": 100 * 1024 * 1024})
+    return web.json_response({"apiVersion": API_VERSION, "version": "2.0.0", "resourceMonitoring": True, "downloads": True, "fileUploads": True, "fileDeletion": True, "roots": [download_root(root) for root in roots_for(request).values()], "thumbnails": thumbnails, "maxUploadBytes": 100 * 1024 * 1024})
 
 
 @routes.get(PREFIX + "/resources")
@@ -223,7 +223,7 @@ async def upload_file(request):
     await asyncio.to_thread(check_publish_support, destination.parent)
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".comfymobile-upload-", delete=False) as output:
+        with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".nodeui-upload-", delete=False) as output:
             temporary = Path(output.name)
             async for chunk in request.content.iter_chunked(1024 * 1024):
                 await asyncio.to_thread(output.write, chunk)
@@ -346,7 +346,7 @@ async def retry_download(request):
     return web.json_response(public_job(result), status=202)
 
 
-DOWNLOAD_MANAGER_KEY = web.AppKey("comfymobile_downloads", DownloadManager)
+DOWNLOAD_MANAGER_KEY = web.AppKey("nodeui_downloads", DownloadManager)
 
 
 async def close_resources(app):

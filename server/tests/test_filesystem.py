@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from comfymobile_bridge.filesystem import FileAccessError, Root, copy_to_input, delete_file, list_files, relative_parts, resolve, write_upload
+from nodeui_bridge.filesystem import FileAccessError, Root, copy_to_input, delete_file, list_files, relative_parts, resolve, write_upload
 
 
 class FileSystemTests(unittest.TestCase):
@@ -176,11 +176,11 @@ class FileSystemTests(unittest.TestCase):
 
 class PublicationTests(unittest.TestCase):
     def test_fallback_is_atomic_and_does_not_overwrite_existing_destination(self):
-        from comfymobile_bridge.filesystem import publish_file
+        from nodeui_bridge.filesystem import publish_file
         with tempfile.TemporaryDirectory() as directory:
             source, target = Path(directory) / ".staged", Path(directory) / "model.bin"
             source.write_bytes(b"complete model")
-            with patch("comfymobile_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
+            with patch("nodeui_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
                 target.write_bytes(b"existing")
                 with self.assertRaises(FileExistsError):
                     publish_file(source, target)
@@ -192,21 +192,21 @@ class PublicationTests(unittest.TestCase):
             self.assertFalse(source.exists())
 
     def test_probe_cleans_up_and_reports_unsupported_publication(self):
-        from comfymobile_bridge.filesystem import check_publish_support, FileAccessError
+        from nodeui_bridge.filesystem import check_publish_support, FileAccessError
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            with patch("comfymobile_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
+            with patch("nodeui_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
                 check_publish_support(folder)
                 self.assertEqual(list(folder.iterdir()), [])
-                with patch("comfymobile_bridge.filesystem._rename_exclusive", side_effect=OSError(errno.ENOTSUP, "No exclusive rename")):
+                with patch("nodeui_bridge.filesystem._rename_exclusive", side_effect=OSError(errno.ENOTSUP, "No exclusive rename")):
                     with self.assertRaisesRegex(FileAccessError, "Choose another location"):
                         check_publish_support(folder)
             self.assertEqual(list(folder.iterdir()), [])
 
     def test_real_io_failures_are_not_hidden_by_fallback(self):
-        from comfymobile_bridge.filesystem import publish_file
-        with patch("comfymobile_bridge.filesystem.os.link", side_effect=OSError(errno.ENOSPC, "Disk full")):
-            with patch("comfymobile_bridge.filesystem._rename_exclusive") as fallback:
+        from nodeui_bridge.filesystem import publish_file
+        with patch("nodeui_bridge.filesystem.os.link", side_effect=OSError(errno.ENOSPC, "Disk full")):
+            with patch("nodeui_bridge.filesystem._rename_exclusive") as fallback:
                 with self.assertRaises(OSError):
                     publish_file(Path("source"), Path("target"))
                 fallback.assert_not_called()

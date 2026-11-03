@@ -198,7 +198,7 @@ class DownloadManager:
                         destination = unique_destination(root, proposed, path)
                         check_publish_support(destination.parent)
                         job.update(name=destination.name, totalBytes=None if response.headers.get("Content-Encoding") else response.content_length)
-                        with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".comfymobile-download-", delete=False) as output:
+                        with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".nodeui-download-", delete=False) as output:
                             temporary = Path(output.name)
                             async for chunk in response.content.iter_chunked(1024 * 1024):
                                 await asyncio.to_thread(output.write, chunk)

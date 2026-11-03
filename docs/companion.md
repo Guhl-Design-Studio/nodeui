@@ -6,19 +6,19 @@ The companion is a small ComfyUI custom-node extension that enables full folder 
 
 Open [the latest helper release](https://github.com/Guhl-Design-Studio/nodeui/releases/latest). This repository and its release downloads are public.
 
-Download the named `comfymobile_bridge.zip` asset, plus `install-windows.ps1` or `install-macos.sh` if you want an installer. Keep the ZIP and installer together. Use the named companion ZIP rather than GitHub's automatic source-code archive. Review scripts before running them; manual installation is also supported.
+Download the named `nodeui_bridge.zip` asset, plus `install-windows.ps1` or `install-macos.sh` if you want an installer. Keep the ZIP and installer together. Use the named companion ZIP rather than GitHub's automatic source-code archive. Review scripts before running them; manual installation is also supported.
 
-Use the latest companion, currently **1.4.1**. It includes device uploads, URL downloads, file deletion, server resource monitoring, and safe publication of completed transfers.
+Use the latest companion, currently **2.0.0**. It includes device uploads, URL downloads, file deletion, server resource monitoring, and safe publication of completed transfers.
 
 ## Manual installation — Windows or macOS
 
-1. Download and extract `comfymobile_bridge.zip`.
-2. Copy the extracted `comfymobile_bridge` folder into `YOUR-COMFYUI-FOLDER/custom_nodes/`. Choose the ComfyUI backend folder containing `main.py`. For ComfyUI Desktop, use the backend directory rather than the application bundle.
+1. Download and extract `nodeui_bridge.zip`.
+2. Copy the extracted `nodeui_bridge` folder into `YOUR-COMFYUI-FOLDER/custom_nodes/`. Choose the ComfyUI backend folder containing `main.py`. For ComfyUI Desktop, use the backend directory rather than the application bundle.
 3. If a companion is already installed, preserve a backup outside `custom_nodes` so ComfyUI cannot load both copies.
 4. Wait until the generation queue is idle, then restart ComfyUI once using its normal launcher.
 5. Reconnect and refresh **File Browser → Locations**.
 
-The internal folder name `comfymobile_bridge` is retained for compatibility. The ZIP contains only the seven companion runtime files.
+Companion 2.0.0 renames the package and API to NodeUI. Update the NodeUI app together with the companion. The ZIP contains only the seven runtime files. When updating from 1.x, move the old companion outside `custom_nodes`; the installers do this automatically and preserve a backup.
 
 ## Windows installer
 
@@ -38,29 +38,29 @@ Open Terminal in the folder containing the installer and ZIP:
 bash install-macos.sh '/path/to/ComfyUI'
 ```
 
-Both installers preserve an existing companion under `<ComfyUI>/.comfymobile-backups/` with a timestamp. They do not download packages, stop ComfyUI, or restart it. Restart manually once the queue is idle.
+Both installers preserve an existing companion under `<ComfyUI>/.nodeui-backups/` with a timestamp. They do not download packages, stop ComfyUI, or restart it. Restart manually once the queue is idle.
 
 ## Verify installation
 
-On the ComfyUI computer, open `http://localhost:8188/comfymobile/v1/capabilities` in a browser, or run:
+On the ComfyUI computer, open `http://localhost:8188/nodeui/v1/capabilities` in a browser, or run:
 
 ```powershell
-Invoke-RestMethod 'http://localhost:8188/comfymobile/v1/capabilities'
+Invoke-RestMethod 'http://localhost:8188/nodeui/v1/capabilities'
 ```
 
 ```sh
-curl 'http://localhost:8188/comfymobile/v1/capabilities'
+curl 'http://localhost:8188/nodeui/v1/capabilities'
 ```
 
-Use your configured port if it differs from 8188. From another device, replace `localhost` with the ComfyUI computer's reachable address. A working installation reports `apiVersion: 1`, its companion version, and available `roots`. Version 1.4.1 reports `downloads: true`, `fileUploads: true`, `fileDeletion: true`, and `resourceMonitoring: true`.
+Use your configured port if it differs from 8188. From another device, replace `localhost` with the ComfyUI computer's reachable address. A working installation reports `apiVersion: 1`, its companion version, and available `roots`. Version 2.0.0 reports `downloads: true`, `fileUploads: true`, `fileDeletion: true`, and `resourceMonitoring: true`.
 
 ## Update, restore, or remove
 
 To update, download the latest ZIP and matching installer, repeat installation, restart ComfyUI when idle, and refresh Locations.
 
-To restore a backup, stop ComfyUI, move the current `custom_nodes/comfymobile_bridge` outside `custom_nodes`, and move the saved `.comfymobile-backups/comfymobile_bridge-...` folder back to `custom_nodes/comfymobile_bridge`. Restart once.
+To restore a backup, stop ComfyUI, move the current `custom_nodes/nodeui_bridge` outside `custom_nodes`, and move the saved `.nodeui-backups/nodeui_bridge-...` folder back to `custom_nodes/nodeui_bridge`. Restart once.
 
-To remove the companion, stop ComfyUI and move `custom_nodes/comfymobile_bridge` outside `custom_nodes`, then restart. Removing this extension does not modify workflows, models, or media.
+To remove the companion, stop ComfyUI and move `custom_nodes/nodeui_bridge` outside `custom_nodes`, then restart. Removing this extension does not modify workflows, models, or media.
 
 ## Companion troubleshooting
 
