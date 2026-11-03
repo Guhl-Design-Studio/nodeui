@@ -90,7 +90,7 @@ async def capabilities(request):
         thumbnails = True
     except ImportError:
         thumbnails = False
-    return web.json_response({"apiVersion": API_VERSION, "version": "2.0.0", "resourceMonitoring": True, "downloads": True, "fileUploads": True, "fileDeletion": True, "roots": [download_root(root) for root in roots_for(request).values()], "thumbnails": thumbnails, "maxUploadBytes": 100 * 1024 * 1024})
+    return web.json_response({"apiVersion": API_VERSION, "version": "2.0.1", "resourceMonitoring": True, "downloads": True, "fileUploads": True, "fileDeletion": True, "roots": [download_root(root) for root in roots_for(request).values()], "thumbnails": thumbnails, "maxUploadBytes": 100 * 1024 * 1024})
 
 
 @routes.get(PREFIX + "/resources")
@@ -368,3 +368,9 @@ def validated_key(body):
     if key is not None and (not isinstance(key, str) or any(ord(c) < 32 for c in key)):
         raise ValueError("Invalid provider key")
     return key
+
+
+# Older mobile builds use this namespace; share handlers so uploads are not redirected.
+for route in tuple(routes):
+    if isinstance(route, web.RouteDef) and route.path.startswith(PREFIX + "/"):
+        routes.route(route.method, "/comfymobile/v1" + route.path[len(PREFIX):], **route.kwargs)(route.handler)

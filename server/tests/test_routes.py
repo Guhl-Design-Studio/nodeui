@@ -22,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 @unittest.skipUnless(HTTP_DEPENDENCIES, "HTTP tests require aiohttp and Pillow (included with ComfyUI)")
 class RouteTests(unittest.IsolatedAsyncioTestCase):
+    API_PREFIX = "/nodeui/v1"
+
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.base = Path(self.temporary.name).resolve()
@@ -54,7 +56,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         self.temporary.cleanup()
 
     async def test_capabilities_exposes_only_logical_roots(self):
-        response = await self.client.get("/nodeui/v1/capabilities")
+        response = await self.client.get(self.API_PREFIX + "/capabilities")
         value = await response.json()
         self.assertEqual(value["apiVersion"], 1)
         self.assertEqual(value["roots"][0]["id"], "workflows")
@@ -63,18 +65,24 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(value["fileUploads"])
         self.assertTrue(value["fileDeletion"])
         self.assertTrue(value["resourceMonitoring"])
-        self.assertEqual(value["version"], "2.0.0")
+        self.assertEqual(value["version"], "2.0.1")
         self.assertTrue(all(root["deletable"] for root in value["roots"]))
 
-    async def test_old_api_namespace_is_removed(self):
-        response = await self.client.get("/comfymobile/v1/capabilities")
-        self.assertEqual(response.status, 404)
+    async def test_api_namespaces_share_handlers(self):
+        current = { (r.method, r.path[len(self.routes.PREFIX):]): r for r in self.routes.routes
+                    if r.path.startswith(self.routes.PREFIX + "/") }
+        legacy = { (r.method, r.path[len("/comfymobile/v1"):]): r for r in self.routes.routes
+                   if r.path.startswith("/comfymobile/v1/") }
+        self.assertEqual(current.keys(), legacy.keys())
+        for key in current:
+            self.assertIs(current[key].handler, legacy[key].handler)
+            self.assertEqual(current[key].kwargs, legacy[key].kwargs)
 
     async def test_resource_endpoint_returns_optional_sensors_without_gpu_drivers(self):
         sample = {"sampledAt": 1792695000, "cpuPercent": None,
                   "ram": {"usedBytes": 1024, "totalBytes": 8192}, "gpu": None}
         with patch.object(self.routes.resource_collector, "sample", return_value=sample):
-            response = await self.client.get("/nodeui/v1/resources")
+            response = await self.client.get(self.API_PREFIX + "/resources")
             self.assertEqual(response.status, 200)
             self.assertEqual(await response.json(), sample)
 
@@ -89,24 +97,24 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
             "loras": ([str(first), str(self.base / "missing"), str(second), str(first / ".")], {".bin"}),
             "missing_models": ([str(self.base / "missing")], {".bin"}),
         })
-        caps = await (await self.client.get("/nodeui/v1/capabilities")).json()
+        caps = await (await self.client.get(self.API_PREFIX + "/capabilities")).json()
         models = [v for v in caps["roots"] if v["kind"] == "models"]
         self.assertEqual([{k: v for k, v in root.items() if k != "downloadDestinations"} for root in models], [{"id": "model:loras", "name": "Loras", "kind": "models", "writable": False, "deletable": True}])
         self.assertEqual(len(models[0]["downloadDestinations"]), 2)
-        listing = await (await self.client.get("/nodeui/v1/files?root=model:loras")).json()
+        listing = await (await self.client.get(self.API_PREFIX + "/files?root=model:loras")).json()
         self.assertEqual([v["name"] for v in listing["entries"]], ["extra.bin", "shared.bin"])
-        response = await self.client.get("/nodeui/v1/content?root=model:loras&path=shared.bin")
+        response = await self.client.get(self.API_PREFIX + "/content?root=model:loras&path=shared.bin")
         self.assertEqual(await response.read(), b"primary")
-        response = await self.client.get("/nodeui/v1/content?root=model:loras:2&path=shared.bin")
+        response = await self.client.get(self.API_PREFIX + "/content?root=model:loras:2&path=shared.bin")
         self.assertEqual(await response.read(), b"secondary")
-        response = await self.client.get("/nodeui/v1/content?root=model:loras&path=extra.bin")
+        response = await self.client.get(self.API_PREFIX + "/content?root=model:loras&path=extra.bin")
         self.assertEqual(await response.read(), b"extra")
 
     async def test_listing_and_content_range(self):
         (self.base / "output" / "movie.mp4").write_bytes(b"0123456789")
-        listing = await (await self.client.get("/nodeui/v1/files?root=output")).json()
+        listing = await (await self.client.get(self.API_PREFIX + "/files?root=output")).json()
         self.assertEqual(listing["entries"][0]["mimeType"], "video/mp4")
-        response = await self.client.get("/nodeui/v1/content?root=output&path=movie.mp4", headers={"Range": "bytes=2-5"})
+        response = await self.client.get(self.API_PREFIX + "/content?root=output&path=movie.mp4", headers={"Range": "bytes=2-5"})
         self.assertEqual(response.status, 206)
         self.assertEqual(await response.read(), b"2345")
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
@@ -118,34 +126,34 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
                 path.write_bytes(b"remove")
                 keep = self.base / folder / "keep.bin"
                 keep.write_bytes(b"keep")
-                response = await self.client.delete("/nodeui/v1/files", params={"root": root, "path": path.name})
+                response = await self.client.delete(self.API_PREFIX + "/files", params={"root": root, "path": path.name})
                 self.assertEqual(response.status, 204)
                 self.assertFalse(path.exists())
                 self.assertEqual(keep.read_bytes(), b"keep")
-                response = await self.client.delete("/nodeui/v1/files", params={"root": root, "path": path.name})
+                response = await self.client.delete(self.API_PREFIX + "/files", params={"root": root, "path": path.name})
                 self.assertEqual(response.status, 404)
 
     async def test_delete_rejects_directories_escapes_and_missing_user(self):
         (self.base / "output" / "nested").mkdir()
         for query in [{"root": "unknown", "path": "a.bin"}, {"root": "output", "path": ""},
                       {"root": "output", "path": "nested"}, {"root": "output", "path": "../secret"}]:
-            response = await self.client.delete("/nodeui/v1/files", params=query)
+            response = await self.client.delete(self.API_PREFIX + "/files", params=query)
             self.assertEqual(response.status, 403)
         file = self.base / "output" / "keep.bin"
         file.write_bytes(b"keep")
         self.routes.PromptServer.instance.user_manager.get_request_user_filepath = lambda *args, **kwargs: None
-        response = await self.client.delete("/nodeui/v1/files", params={"root": "output", "path": file.name})
+        response = await self.client.delete(self.API_PREFIX + "/files", params={"root": "output", "path": file.name})
         self.assertEqual(response.status, 403)
         self.assertTrue(file.exists())
 
     async def test_upload_and_copy(self):
         data = FormData()
         data.add_field("file", b"new image", filename="a.png", content_type="image/png")
-        response = await self.client.post("/nodeui/v1/upload?root=input&path=mobile", data=data)
+        response = await self.client.post(self.API_PREFIX + "/upload?root=input&path=mobile", data=data)
         self.assertEqual(response.status, 201)
         self.assertEqual((await response.json())["path"], "mobile/a.png")
         (self.base / "output" / "result.png").write_bytes(b"result")
-        response = await self.client.post("/nodeui/v1/copy", json={"root": "output", "path": "result.png"})
+        response = await self.client.post(self.API_PREFIX + "/copy", json={"root": "output", "path": "result.png"})
         value = await response.json()
         self.assertEqual(response.status, 200)
         self.assertEqual(value["subfolder"], "")
@@ -155,22 +163,22 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_thumbnail_size_and_image_format(self):
         Image.new("RGB", (1024, 512), "blue").save(self.base / "output" / "large.png")
-        response = await self.client.get("/nodeui/v1/thumbnail?root=output&path=large.png&width=128")
+        response = await self.client.get(self.API_PREFIX + "/thumbnail?root=output&path=large.png&width=128")
         self.assertEqual(response.content_type, "image/jpeg")
         image = Image.open(io.BytesIO(await response.read()))
         self.assertEqual(image.size, (128, 64))
 
     async def test_unknown_roots_and_escapes_are_denied(self):
         for query in ["root=unknown", "root=input&path=../secret", "root=input&path=C:%5Csecret"]:
-            response = await self.client.get("/nodeui/v1/content?" + query)
+            response = await self.client.get(self.API_PREFIX + "/content?" + query)
             self.assertEqual(response.status, 403)
 
     async def test_readonly_model_upload_and_copy_are_denied(self):
         form = FormData()
         form.add_field("file", b"weights", filename="weights.bin")
-        response = await self.client.post("/nodeui/v1/upload?root=model:loras", data=form)
+        response = await self.client.post(self.API_PREFIX + "/upload?root=model:loras", data=form)
         self.assertEqual(response.status, 403)
-        response = await self.client.post("/nodeui/v1/copy", json={"root": "model:loras:0", "path": "weights.bin"})
+        response = await self.client.post(self.API_PREFIX + "/copy", json={"root": "model:loras:0", "path": "weights.bin"})
         self.assertEqual(response.status, 403)
 
 
@@ -178,7 +186,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         query = {"root": "output", "location": self.routes.location_id(self.base / "output"), "filename": "model.bin"}
         with patch("nodeui_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
             for name in ["model.bin", "model_1.bin"]:
-                response = await self.client.post("/nodeui/v1/upload-file", params=query, data=b"complete")
+                response = await self.client.post(self.API_PREFIX + "/upload-file", params=query, data=b"complete")
                 self.assertEqual(response.status, 201)
                 self.assertEqual((await response.json())["name"], name)
         self.assertEqual({p.name for p in (self.base / "output").iterdir()}, {"model.bin", "model_1.bin"})
@@ -188,7 +196,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         query = {"root": "output", "location": self.routes.location_id(self.base / "output"), "filename": "model.bin"}
         with patch("nodeui_bridge.filesystem.os.link", side_effect=OSError(errno.EOPNOTSUPP, "No hard links")):
             with patch("nodeui_bridge.filesystem._rename_exclusive", side_effect=OSError(errno.ENOTSUP, "No exclusive rename")):
-                response = await self.client.post("/nodeui/v1/upload-file", params=query, data=b"complete")
+                response = await self.client.post(self.API_PREFIX + "/upload-file", params=query, data=b"complete")
         self.assertEqual(response.status, 403)
         self.assertEqual(list((self.base / "output").iterdir()), [])
 
@@ -196,10 +204,10 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         extra = self.base / "extra_models"
         (extra / "nested").mkdir(parents=True)
         self.routes.folder_paths.folder_names_and_paths["loras"] = ([str(self.base / "models"), str(extra)], {".bin"})
-        locations = await (await self.client.get("/nodeui/v1/downloads/locations?root=model:loras&path=nested")).json()
+        locations = await (await self.client.get(self.API_PREFIX + "/downloads/locations?root=model:loras&path=nested")).json()
         query = {"root": "model:loras", "path": "nested", "location": locations["defaultLocation"], "filename": "a + model.bin"}
         for expected in ["a + model.bin", "a + model_1.bin"]:
-            response = await self.client.post("/nodeui/v1/upload-file", params=query, data=b"model bytes")
+            response = await self.client.post(self.API_PREFIX + "/upload-file", params=query, data=b"model bytes")
             self.assertEqual(response.status, 201)
             self.assertEqual((await response.json())["path"], "nested/" + expected)
             self.assertEqual((extra / "nested" / expected).read_bytes(), b"model bytes")
@@ -211,7 +219,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
             for _ in range(101):
                 yield b"x" * (1024 * 1024)
         query = {"root": "model:loras", "location": self.routes.location_id(self.base / "models"), "filename": "large.bin"}
-        response = await self.client.post("/nodeui/v1/upload-file", params=query, data=chunks())
+        response = await self.client.post(self.API_PREFIX + "/upload-file", params=query, data=chunks())
         self.assertEqual(response.status, 201)
         self.assertEqual((await response.json())["size"], 101 * 1024 * 1024)
         self.assertEqual((self.base / "models/large.bin").stat().st_size, 101 * 1024 * 1024)
@@ -219,12 +227,12 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_device_upload_rejects_unconfigured_locations_and_escapes(self):
         query = {"root": "model:loras", "location": self.routes.location_id(self.base / "models"), "filename": "model.bin"}
         for change, status in [({"location": "unknown"}, 400), ({"root": "unknown"}, 403), ({"path": "../escape"}, 403), ({"filename": "../escape.bin"}, 403), ({"filename": "C:\\escape.bin"}, 403)]:
-            response = await self.client.post("/nodeui/v1/upload-file", params={**query, **change}, data=b"model bytes")
+            response = await self.client.post(self.API_PREFIX + "/upload-file", params={**query, **change}, data=b"model bytes")
             self.assertEqual(response.status, status)
         outside = self.base / "outside"
         outside.mkdir()
         (self.base / "models/link").symlink_to(outside, target_is_directory=True)
-        response = await self.client.post("/nodeui/v1/upload-file", params={**query, "path": "link"}, data=b"model bytes")
+        response = await self.client.post(self.API_PREFIX + "/upload-file", params={**query, "path": "link"}, data=b"model bytes")
         self.assertEqual(response.status, 403)
         self.assertEqual(list(outside.iterdir()), [])
 
@@ -245,33 +253,33 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         extra = self.base / "extra"
         (extra / "nested").mkdir(parents=True)
         self.routes.folder_paths.folder_names_and_paths["loras"] = ([str(self.base / "models"), str(extra)], {".bin"})
-        response = await self.client.get("/nodeui/v1/downloads/locations?root=model:loras&path=nested")
+        response = await self.client.get(self.API_PREFIX + "/downloads/locations?root=model:loras&path=nested")
         value = await response.json()
         self.assertEqual(value["defaultLocation"], value["destinations"][1]["id"])
-        response = await self.client.post("/nodeui/v1/downloads", json={"url": "file:///tmp/a", "root": "model:loras"})
+        response = await self.client.post(self.API_PREFIX + "/downloads", json={"url": "file:///tmp/a", "root": "model:loras"})
         self.assertEqual(response.status, 400)
-        response = await self.client.post("/nodeui/v1/downloads", json={"url": "https://example.com/a", "root": "model:loras", "path": "../outside"})
+        response = await self.client.post(self.API_PREFIX + "/downloads", json={"url": "https://example.com/a", "root": "model:loras", "path": "../outside"})
         self.assertEqual(response.status, 403)
-        response = await self.client.post("/nodeui/v1/downloads", json={"url": "https://example.com/a", "root": "model:loras", "location": "99"})
+        response = await self.client.post(self.API_PREFIX + "/downloads", json={"url": "https://example.com/a", "root": "model:loras", "location": "99"})
         self.assertEqual(response.status, 400)
         with patch("nodeui_bridge.downloads.DownloadManager.run", AsyncMock()):
-            response = await self.client.post("/nodeui/v1/downloads", json={"url": "https://example.com/a?token=secret", "key": "secret", "root": "model:loras", "location": value["defaultLocation"], "path": "nested"})
+            response = await self.client.post(self.API_PREFIX + "/downloads", json={"url": "https://example.com/a?token=secret", "key": "secret", "root": "model:loras", "location": value["defaultLocation"], "path": "nested"})
             self.assertEqual(response.status, 202)
             job = await response.json()
             self.assertNotIn("secret", str(job))
             ident = job["id"]
-            listing = await (await self.client.get("/nodeui/v1/downloads")).json()
+            listing = await (await self.client.get(self.API_PREFIX + "/downloads")).json()
             self.assertEqual(len(listing), 1)
-            response = await self.client.get("/nodeui/v1/downloads/" + ident)
+            response = await self.client.get(self.API_PREFIX + "/downloads/" + ident)
             self.assertEqual(response.status, 200)
             manager = self.client.app[self.routes.DOWNLOAD_MANAGER_KEY]
             manager.jobs[ident]["state"] = "failed"
-            response = await self.client.post("/nodeui/v1/downloads/" + ident + "/retry", json={})
+            response = await self.client.post(self.API_PREFIX + "/downloads/" + ident + "/retry", json={})
             self.assertEqual(response.status, 202)
             manager.jobs[ident]["owner"] = "another-user"
-            response = await self.client.get("/nodeui/v1/downloads/" + ident)
+            response = await self.client.get(self.API_PREFIX + "/downloads/" + ident)
             self.assertEqual(response.status, 404)
-            response = await self.client.post("/nodeui/v1/downloads/" + ident + "/cancel", json={})
+            response = await self.client.post(self.API_PREFIX + "/downloads/" + ident + "/cancel", json={})
             self.assertEqual(response.status, 404)
 
 
@@ -279,9 +287,9 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         import asyncio
         from aiohttp import ClientSession
         (self.base / "input" / "source.bin").write_bytes(b"downloaded on server")
-        response = await self.client.post("/nodeui/v1/downloads", json={
+        response = await self.client.post(self.API_PREFIX + "/downloads", json={
             "root": "model:loras", "path": "nested", "filename": "model.bin",
-            "url": str(self.client.make_url("/nodeui/v1/content?root=input&path=source.bin")),
+            "url": str(self.client.make_url(self.API_PREFIX + "/content?root=input&path=source.bin")),
         })
         self.assertEqual(response.status, 202)
         job = await response.json()
@@ -292,7 +300,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(task, 5)
         # A new connection sees the existing server-owned job.
         async with ClientSession() as reconnected:
-            async with reconnected.get(str(self.client.make_url("/nodeui/v1/downloads/" + job["id"]))) as result:
+            async with reconnected.get(str(self.client.make_url(self.API_PREFIX + "/downloads/" + job["id"]))) as result:
                 final = await result.json()
         self.assertEqual(final["state"], "completed")
         self.assertEqual((self.base / "models/nested/model.bin").read_bytes(), b"downloaded on server")
@@ -300,3 +308,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LegacyRouteTests(RouteTests):
+    API_PREFIX = "/comfymobile/v1"

@@ -8,7 +8,7 @@ Open [the latest helper release](https://github.com/Guhl-Design-Studio/nodeui/re
 
 Download the named `nodeui_bridge.zip` asset, plus `install-windows.ps1` or `install-macos.sh` if you want an installer. Keep the ZIP and installer together. Use the named companion ZIP rather than GitHub's automatic source-code archive. Review scripts before running them; manual installation is also supported.
 
-Use the latest companion, currently **2.0.0**. It includes device uploads, URL downloads, file deletion, server resource monitoring, and safe publication of completed transfers.
+Use the latest companion, currently **2.0.1**. It includes device uploads, URL downloads, file deletion, server resource monitoring, and safe publication of completed transfers.
 
 ## Manual installation — Windows or macOS
 
@@ -18,7 +18,7 @@ Use the latest companion, currently **2.0.0**. It includes device uploads, URL d
 4. Wait until the generation queue is idle, then restart ComfyUI once using its normal launcher.
 5. Reconnect and refresh **File Browser → Locations**.
 
-Companion 2.0.0 renames the package and API to NodeUI. Update the NodeUI app together with the companion. The ZIP contains only the seven runtime files. When updating from 1.x, move the old companion outside `custom_nodes`; the installers do this automatically and preserve a backup.
+Companion 2.0.0 renames the package and API to NodeUI. Version 2.0.1 also accepts `/comfymobile/v1` API requests, so existing mobile builds continue working. The ZIP contains only the seven runtime files. When updating from 1.x, move the old companion outside `custom_nodes`; the installers do this automatically and preserve a backup.
 
 ## Windows installer
 
@@ -52,7 +52,7 @@ Invoke-RestMethod 'http://localhost:8188/nodeui/v1/capabilities'
 curl 'http://localhost:8188/nodeui/v1/capabilities'
 ```
 
-Use your configured port if it differs from 8188. From another device, replace `localhost` with the ComfyUI computer's reachable address. A working installation reports `apiVersion: 1`, its companion version, and available `roots`. Version 2.0.0 reports `downloads: true`, `fileUploads: true`, `fileDeletion: true`, and `resourceMonitoring: true`.
+Use your configured port if it differs from 8188. From another device, replace `localhost` with the ComfyUI computer's reachable address. A working installation reports `apiVersion: 1`, its companion version, and available `roots`. Version 2.0.1 reports `downloads: true`, `fileUploads: true`, `fileDeletion: true`, and `resourceMonitoring: true`.
 
 ## Update, restore, or remove
 
