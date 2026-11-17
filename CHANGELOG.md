@@ -1,5 +1,13 @@
 # NodeUI companion releases
 
+## 2.1.1 — November 17, 2026
+
+- **Android + iOS:** Add Shared Input, Prompt Input, and Return Image to NodeUI for share-sheet and shortcut workflows, with ordered images and receipt-based results.
+- **Android + iOS:** Add per-image browser Upload, Select, Remove, and drop targets while preserving numbered assignments and original dimensions.
+- **Android + iOS:** Omit unfilled image processing branches, including grouped scale nodes, without changing saved workflows.
+- **Android + iOS:** Forward progress and previews for jobs started by other clients to opted-in NodeUI connections.
+- **Android + iOS:** Package and validate all 12 runtime files, preserving both API namespaces and existing transfer tools.
+
 ## 2.0.1 — November 3, 2026
 
 - Restore `/comfymobile/v1` as direct aliases for all `/nodeui/v1` endpoints so existing mobile builds keep working, including uploads and downloads. Both namespaces share handlers, access checks, and jobs.

@@ -10,8 +10,11 @@ from pathlib import Path
 import tempfile
 import hashlib
 import aiohttp
+from .share_runs import ShareRuns
+from .shared_images import shared_images_middleware
 from .downloads import DownloadManager, checked_url, discover, provider
 from .resources import collector as resource_collector, current_device
+from .execution_observer import install as install_execution_observer
 
 from aiohttp import web
 import folder_paths
@@ -22,6 +25,7 @@ from .filesystem import relative_parts, FileAccessError, Root, copy_to_input, de
 API_VERSION = 1
 PREFIX = "/nodeui/v1"
 routes = PromptServer.instance.routes
+EXECUTION_OBSERVATION = install_execution_observer(PromptServer.instance)
 
 
 def roots_for(request) -> dict[str, Root]:
@@ -90,7 +94,28 @@ async def capabilities(request):
         thumbnails = True
     except ImportError:
         thumbnails = False
-    return web.json_response({"apiVersion": API_VERSION, "version": "2.0.1", "resourceMonitoring": True, "downloads": True, "fileUploads": True, "fileDeletion": True, "roots": [download_root(root) for root in roots_for(request).values()], "thumbnails": thumbnails, "maxUploadBytes": 100 * 1024 * 1024})
+    return web.json_response({"apiVersion": API_VERSION, "version": "2.1.1", "executionObservation": EXECUTION_OBSERVATION, "sharedWorkflows": True, "sharedWorkflowImageOutputs": True, "promptWorkflows": True, "resourceMonitoring": True, "downloads": True, "fileUploads": True, "fileDeletion": True, "roots": [download_root(root) for root in roots_for(request).values()], "thumbnails": thumbnails, "maxUploadBytes": 100 * 1024 * 1024})
+
+
+def share_runs():
+    return ShareRuns(Path(folder_paths.get_user_directory()) / "__nodeui" / "share-runs.sqlite3")
+
+
+@routes.post(PREFIX + "/share/runs")
+@guarded
+async def submit_shared_workflow(request):
+    # Delegate validation, queue ordering and execution to ComfyUI's installed /prompt handler.
+    handler = next(route.handler for route in routes if route.method == "POST" and route.path == "/prompt")
+    return await share_runs().submit(download_owner(request), request, handler)
+
+
+@routes.get(PREFIX + "/share/result")
+@guarded
+async def shared_result(request):
+    if request.method != "GET":
+        raise web.HTTPMethodNotAllowed(request.method, ["GET"])
+    return await share_runs().result(download_owner(request), request.headers.get("X-NodeUI-Receipt"),
+                                     PromptServer.instance.prompt_queue, get_root(request, "output"))
 
 
 @routes.get(PREFIX + "/resources")
@@ -354,6 +379,7 @@ async def close_resources(app):
 
 
 def configure_downloads(app):
+    app.middlewares.append(shared_images_middleware)
     app[DOWNLOAD_MANAGER_KEY] = DownloadManager()
     app.on_cleanup.append(close_downloads)
     app.on_cleanup.append(close_resources)

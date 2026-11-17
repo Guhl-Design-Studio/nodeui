@@ -25,7 +25,7 @@ try {
     New-Item -ItemType Directory -Path $temporary -Force | Out-Null
     Expand-Archive -LiteralPath $archive -DestinationPath $temporary
     $prepared = Join-Path $temporary 'nodeui_bridge'
-    foreach ($file in @('__init__.py', 'filesystem.py', 'routes.py', 'downloads.py', 'resources.py', 'resource_gpu.py', 'resource_windows.py')) {
+    foreach ($file in @('__init__.py', 'filesystem.py', 'routes.py', 'downloads.py', 'resources.py', 'resource_gpu.py', 'resource_windows.py', 'execution_observer.py', 'share_nodes.py', 'share_runs.py', 'shared_images.py', 'web/shared_input.js')) {
         if (-not (Test-Path -LiteralPath (Join-Path $prepared $file) -PathType Leaf)) {
             throw "The archive is missing runtime file $file."
         }

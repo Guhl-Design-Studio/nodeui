@@ -65,7 +65,11 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(value["fileUploads"])
         self.assertTrue(value["fileDeletion"])
         self.assertTrue(value["resourceMonitoring"])
-        self.assertEqual(value["version"], "2.0.1")
+        self.assertEqual(value["version"], "2.1.1")
+        self.assertTrue(value["sharedWorkflows"])
+        self.assertTrue(value["sharedWorkflowImageOutputs"])
+        self.assertTrue(value["promptWorkflows"])
+        self.assertFalse(value["executionObservation"], "The minimal route fixture has no execution transport.")
         self.assertTrue(all(root["deletable"] for root in value["roots"]))
 
     async def test_api_namespaces_share_handlers(self):

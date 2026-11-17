@@ -1,0 +1,12 @@
+{
+  "last_node_id": 2, "last_link_id": 1, "version": 0.4,
+  "nodes": [
+    {"id": 1, "type": "NodeUISharedInput", "title": "Shared Input", "pos": [40, 80], "size": [290, 160], "flags": {}, "order": 0, "mode": 0, "inputs": [],
+     "outputs": [{"name": "image", "type": "IMAGE", "links": [1]}, {"name": "prompt", "type": "STRING", "links": null}],
+     "properties": {"Node name for S&R": "NodeUISharedInput"}, "widgets_values": ["", ""]},
+    {"id": 2, "type": "NodeUIReturnImage", "title": "Return Image to NodeUI", "pos": [440, 80], "size": [230, 100], "flags": {}, "order": 1, "mode": 0,
+     "inputs": [{"name": "images", "type": "IMAGE", "link": 1}], "outputs": [],
+     "properties": {"Node name for S&R": "NodeUIReturnImage"}, "widgets_values": []}
+  ],
+  "links": [[1, 1, 0, 2, 0, "IMAGE"]], "groups": [], "config": {}, "extra": {}
+}

@@ -1,8 +1,8 @@
 # NodeUI companion
 
-This is the server companion for **NodeUI**. Version **2.0.1** uses the `nodeui_bridge` package, `nodeui_bridge.zip` archive, and `/nodeui/v1` API routes. The `/comfymobile/v1` routes remain available as aliases for existing mobile builds. Both namespaces use the same handlers and transfer jobs. Remove the previous companion from `custom_nodes` before restarting.
+This is the server companion for **NodeUI**. Version **2.1.1** uses the `nodeui_bridge` package, `nodeui_bridge.zip` archive, and `/nodeui/v1` API routes. The `/comfymobile/v1` routes remain available as aliases for existing mobile builds. Both namespaces use the same handlers and transfer jobs. Remove the previous companion from `custom_nodes` before restarting.
 
-Copy `nodeui_bridge` into your ComfyUI `custom_nodes` directory and restart ComfyUI once. No separate process, credentials, port, or frontend extension is installed. It registers routes on the same ComfyUI HTTP server.
+Copy `nodeui_bridge` into your ComfyUI `custom_nodes` directory and restart ComfyUI once. It registers routes on the same ComfyUI HTTP server and bundles a small browser extension for Shared Input’s growing image outputs. No separate process, credentials, or port is installed.
 
 Windows portable example: `E:\ComfyUI\ComfyUI\custom_nodes\nodeui_bridge`.
 
@@ -11,6 +11,22 @@ macOS example: `<ComfyUI>/custom_nodes/nodeui_bridge`.
 Verify with `http://<server>:8188/nodeui/v1/capabilities`. The response reports API version 1, enabled image thumbnails, upload size, and logical folder roots. Pillow is normally present in ComfyUI; when absent, image requests return the original image instead of a thumbnail.
 
 The app still loads, edits and executes workflows without this companion. Its fallback browser uses ComfyUI's workflow/model endpoints and indexed assets; complete filesystem browsing and server-side reuse of outputs require the companion.
+
+## Shared workflows in 2.1.0
+
+The companion registers **Shared Input** and **Return Image to NodeUI** in the NodeUI category. Both work in the browser editor. See the [iOS setup and example](../docs/companion.md#run-a-workflow-from-an-iphone-or-ipad).
+
+The companion advertises `sharedWorkflowImageOutputs: true`. Shared Input grows numbered image connectors as they are wired, preserving the original image/prompt slots and every image’s dimensions. Shortcuts passes ordered uploaded paths through the internal optional `image_paths` input. Missing image outputs and processing branches that require them are omitted before validation. Optional downstream inputs use their normal defaults; missing required output inputs still reject the submission before any job is queued. Saved workflow wiring is preserved. Check the capability rather than the version string alone, since earlier 2.1.0 archives lack multiple-image support.
+
+In the ComfyUI browser, each connected image output has its own preview area and **Upload**, **Select**, and **Remove** buttons. Drop one local image directly into an area to upload it to that numbered slot. **Select** refreshes the server’s uploaded-image list, including uploads from other nodes or devices, and reuses the selected image without uploading it again. ComfyUI image assets and same-server image-preview links can also be dropped into an area. Replacing or removing an image preserves every other numbered assignment; removing a reference keeps the uploaded file on the server. The `web/shared_input.js` asset is included in the installable archive; reload the editor after installing the updated companion.
+
+Browser-extension regressions run with `node --test server/tests/test_shared_input_web.mjs` from the repository root. Companion API tests run with `python -m unittest discover -s server/tests -v` in an environment with aiohttp and Pillow.
+
+**Prompt Input** supplies a text-only input for **Run NodeUI Workflow With Prompt**. Connect it through your image-generation nodes to **Return Image to NodeUI**, then save the workflow to the server. The companion advertises `promptWorkflows: true`; the iOS action binds a new prompt in a submission copy and uses the same receipt/result endpoints without uploading an image. A [Control Center shortcut](../docs/control-center.md) can ask for the prompt in iOS's popup while NodeUI stays in the background.
+
+The capabilities response advertises `sharedWorkflows: true`. `POST /nodeui/v1/share/runs` accepts ComfyUI’s prompt request plus a random UUID in `nodeui_receipt` and the return node ID in `nodeui_output`. Repeating an accepted receipt returns the same job ID. The native prompt handler performs validation and queues the graph. Ordinary web submissions use the normal ComfyUI endpoint.
+
+`GET /nodeui/v1/share/result` takes the receipt in the `X-NodeUI-Receipt` header. It waits for that user's job and returns the first PNG from the designated output, or HTTP 202 to reconnect after a long wait. It reports failed or cancelled runs and missing files. Receipts persist in the ComfyUI system user directory. The complete image batch remains in the normal output folder and execution history.
 
 ## API version 1
 
@@ -34,6 +50,14 @@ Companion 1.0.1 presents one model root per category, such as `model:checkpoints
 ## Tests
 
 Run `python3 -m unittest discover -s server/tests -v` from the repository root. Filesystem tests need only Python's standard library. Route integration tests additionally use aiohttp and Pillow, already included with a usual ComfyUI install.
+
+## Jobs started by another client (companion 2.0.2)
+
+ComfyUI normally directs sampling progress and preview images to the WebSocket client that submitted the job. Updated Android and iOS clients opt in to observing other jobs by sending `nodeui_observe_execution: true` with `supports_preview_metadata: true` in their first WebSocket `feature_flags` message. The companion forwards execution updates as `nodeui_execution` messages containing `type` and `data`, and previews as prompt-scoped binary metadata packets. The submitting client's connection and events are preserved; browser clients that do not opt in receive no additional events. Broadcasts are not duplicated, and legacy frames retain the job identity captured when they were produced.
+
+Capabilities advertise `executionObservation: true` when the ComfyUI transport supports the relay. Install the updated companion archive and restart ComfyUI when its queue is idle, then reconnect the updated Android or iOS app. Older companions cannot forward previews directed to another client. Preview generation still depends on that job's preview settings and sampler; this feature does not enable previews for a job that produces none. It does not apply to Comfy Cloud.
+
+This integration archive retains version **2.1.0** and includes both execution observation and shared workflows. Earlier 2.1.0 archives may lack the relay; check `executionObservation` rather than relying on the version string alone.
 
 ## URL downloads (companion 1.1.0)
 

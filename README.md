@@ -21,7 +21,7 @@ Run the existing companion tests from the repository root:
 python3 -m unittest discover -s server/tests -v
 ```
 
-HTTP and transfer tests require `aiohttp` and Pillow in the test interpreter. ComfyUI normally includes these dependencies. Filesystem tests use Python's standard library.
+Browser-extension regressions run with `node --test server/tests/test_shared_input_web.mjs`. HTTP and transfer tests require `aiohttp` and Pillow in the test interpreter. ComfyUI normally includes these dependencies. Filesystem tests use Python's standard library.
 
 Build the installable archive after changing companion runtime files:
 
@@ -29,4 +29,4 @@ Build the installable archive after changing companion runtime files:
 python3 scripts/package_companion.py
 ```
 
-The archive contains only `__init__.py`, `filesystem.py`, `routes.py`, `downloads.py`, `resources.py`, `resource_gpu.py`, and `resource_windows.py` under `nodeui_bridge/`. Publish that ZIP and both installers together as release assets. Keep this repository limited to companion helpers and technical documentation.
+The archive contains the 12 allowlisted runtime files under `nodeui_bridge/`, including the Shared Input browser extension in `web/shared_input.js`. It excludes tests and development fixtures. Publish that ZIP and both installers together as release assets. Keep this repository limited to companion helpers and technical documentation.

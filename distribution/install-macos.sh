@@ -37,7 +37,7 @@ cleanup() {
 }
 trap cleanup EXIT
 /usr/bin/unzip -q "$archive" -d "$temporary"
-for runtime_file in __init__.py filesystem.py routes.py downloads.py resources.py resource_gpu.py resource_windows.py; do
+for runtime_file in __init__.py filesystem.py routes.py downloads.py resources.py resource_gpu.py resource_windows.py execution_observer.py share_nodes.py share_runs.py shared_images.py web/shared_input.js; do
     if [[ ! -f "$temporary/nodeui_bridge/$runtime_file" ]]; then
         echo "The archive is missing runtime file $runtime_file." >&2
         exit 1
