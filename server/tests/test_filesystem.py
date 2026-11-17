@@ -1,5 +1,7 @@
 import io
 import errno
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from unittest.mock import patch
 from pathlib import Path
 import sys
@@ -96,6 +98,34 @@ class FileSystemTests(unittest.TestCase):
         self.assertEqual(first["path"], "nested/image.png")
         self.assertEqual(second["path"], "nested/image_1.png")
         self.assertEqual(resolve(self.root, first["path"]).read_bytes(), b"first")
+
+    def test_uploads_publish_complete_files_with_distinct_names(self):
+        from nodeui_bridge.filesystem import publish_file
+        ready = Barrier(2)
+        def simultaneous_publish(source, target):
+            if target.name == "same.png":
+                self.assertEqual(list_files(self.root)["entries"], [])
+                ready.wait(timeout=5)
+            publish_file(source, target)
+
+        with patch("nodeui_bridge.filesystem.publish_file", side_effect=simultaneous_publish):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                def upload(data):
+                    info = write_upload(self.root, "same.png", io.BytesIO(data))
+                    self.assertEqual(resolve(self.root, info["path"]).read_bytes(), data)
+                    return info["name"]
+                names = list(pool.map(upload, [b"first", b"second"]))
+        self.assertEqual(set(names), {"same.png", "same_1.png"})
+
+    def test_only_returned_page_needs_detailed_metadata(self):
+        from nodeui_bridge.filesystem import file_info
+        for index in range(15):
+            (self.folder / f"{index}.png").touch()
+        with patch("nodeui_bridge.filesystem.file_info", wraps=file_info) as metadata:
+            pages = [list_files(self.root, offset=i, limit=5) for i in (0, 5, 10)]
+        self.assertEqual(metadata.call_count, 15)
+        self.assertEqual([page["nextOffset"] for page in pages], [5, 10, None])
+        self.assertEqual(len({item["path"] for page in pages for item in page["entries"]}), 15)
 
     def test_rejects_large_upload_and_cleans_temporary_file(self):
         with self.assertRaises(FileAccessError):

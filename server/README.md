@@ -1,6 +1,6 @@
 # NodeUI companion
 
-This is the server companion for **NodeUI**. Version **2.1.1** uses the `nodeui_bridge` package, `nodeui_bridge.zip` archive, and `/nodeui/v1` API routes. The `/comfymobile/v1` routes remain available as aliases for existing mobile builds. Both namespaces use the same handlers and transfer jobs. Remove the previous companion from `custom_nodes` before restarting.
+This is the server companion for **NodeUI**. Version **2.1.2** uses the `nodeui_bridge` package, `nodeui_bridge.zip` archive, and `/nodeui/v1` API routes. The `/comfymobile/v1` routes remain available as aliases for existing mobile builds. Both namespaces use the same handlers and transfer jobs. Remove the previous companion from `custom_nodes` before restarting.
 
 Copy `nodeui_bridge` into your ComfyUI `custom_nodes` directory and restart ComfyUI once. It registers routes on the same ComfyUI HTTP server and bundles a small browser extension for Shared Input’s growing image outputs. No separate process, credentials, or port is installed.
 

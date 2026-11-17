@@ -9,7 +9,7 @@ from urllib.parse import quote, unquote, urljoin, urlsplit, urlunsplit
 import uuid
 
 import aiohttp
-from .filesystem import FileAccessError, Root, relative_parts, resolve, unique_destination, file_info, publish_file, check_publish_support
+from .filesystem import FileAccessError, Root, relative_parts, resolve, unique_destination, file_info, publish_unique, check_publish_support
 
 
 def checked_url(value):
@@ -204,13 +204,7 @@ class DownloadManager:
                                 await asyncio.to_thread(output.write, chunk)
                                 job.update(receivedBytes=job["receivedBytes"] + len(chunk), updated=time.time())
                         # Both hard links and exclusive rename publish complete files atomically.
-                        while True:
-                            destination = unique_destination(root, proposed, path)
-                            try:
-                                publish_file(temporary, destination)
-                                break
-                            except FileExistsError:
-                                continue
+                        destination = publish_unique(temporary, root, proposed, path)
                         info = file_info(root, destination)
                         job.update(state="completed", name=info["name"], path=info["path"], updated=time.time())
                     finally:

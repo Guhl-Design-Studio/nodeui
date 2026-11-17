@@ -65,7 +65,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(value["fileUploads"])
         self.assertTrue(value["fileDeletion"])
         self.assertTrue(value["resourceMonitoring"])
-        self.assertEqual(value["version"], "2.1.1")
+        self.assertEqual(value["version"], "2.1.2")
         self.assertTrue(value["sharedWorkflows"])
         self.assertTrue(value["sharedWorkflowImageOutputs"])
         self.assertTrue(value["promptWorkflows"])

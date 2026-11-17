@@ -8,7 +8,7 @@ Open [the latest helper release](https://github.com/Guhl-Design-Studio/nodeui/re
 
 Download the named `nodeui_bridge.zip` asset, plus `install-windows.ps1` or `install-macos.sh` if you want an installer. Keep the ZIP and installer together. Use the named companion ZIP rather than GitHub's automatic source-code archive. Review scripts before running them; manual installation is also supported.
 
-Use the latest companion, currently **2.1.1**. It includes shared workflows with ordered images and prompts, per-image Upload/Select/Remove controls, live progress for jobs started by another client, and the existing file-transfer and resource-monitoring tools.
+Use the latest companion, currently **2.1.2**. It includes shared workflows with ordered images and prompts, per-image Upload/Select/Remove controls, live progress for jobs started by another client, and the existing file-transfer and resource-monitoring tools.
 
 ## Manual installation — Windows or macOS
 
@@ -52,11 +52,11 @@ Invoke-RestMethod 'http://localhost:8188/nodeui/v1/capabilities'
 curl 'http://localhost:8188/nodeui/v1/capabilities'
 ```
 
-Use your configured port if it differs from 8188. From another device, replace `localhost` with the ComfyUI computer's reachable address. A working installation reports `apiVersion: 1`, its companion version, and available `roots`. Version 2.1.1 reports `sharedWorkflows: true`, `sharedWorkflowImageOutputs: true`, `promptWorkflows: true`, `downloads: true`, `fileUploads: true`, `fileDeletion: true`, and `resourceMonitoring: true`. It also advertises `executionObservation: true` when the server transport supports forwarding progress and previews.
+Use your configured port if it differs from 8188. From another device, replace `localhost` with the ComfyUI computer's reachable address. A working installation reports `apiVersion: 1`, its companion version, and available `roots`. Version 2.1.2 reports `sharedWorkflows: true`, `sharedWorkflowImageOutputs: true`, `promptWorkflows: true`, `downloads: true`, `fileUploads: true`, `fileDeletion: true`, and `resourceMonitoring: true`. It also advertises `executionObservation: true` when the server transport supports forwarding progress and previews.
 
 ## Run a workflow from an iPhone or iPad
 
-1. Install the [latest companion 2.1.1 and matching installer](https://github.com/Guhl-Design-Studio/nodeui/releases/latest) in your self-hosted ComfyUI installation and restart ComfyUI. In NodeUI, connect to that server and allow notifications when prompted.
+1. Install the [latest companion 2.1.2 and matching installer](https://github.com/Guhl-Design-Studio/nodeui/releases/latest) in your self-hosted ComfyUI installation and restart ComfyUI. In NodeUI, connect to that server and allow notifications when prompted.
 2. Open the [model-free example](../server/examples/shared-image.json) in the ComfyUI web editor or NodeUI and **save it to the server**. For your own workflow, add one enabled **Shared Input** and one enabled **Return Image to NodeUI** on the main canvas. Wire the image or prompt through your processing nodes to the return node. To drive a text widget in the web editor, expose it as an input and connect the prompt output. Groups between them are supported. The example returns the image you send.
 3. From Photos or Files, share one or more images and choose **NodeUI** in the apps row (look under **More** if needed). Choose the server and workflow, edit the prompt, and tap **Run**. Numbered previews show the image order supplied by the sharing app. Shared text fills the prompt when available. Otherwise the node supplies its saved default.
 4. In Shortcuts, add **Run NodeUI Workflow With Prompt And Images**, choose a workflow, connect one or more images to **Images**, and optionally pass text. The action returns the accepted ComfyUI job ID immediately. Use **Ask Each Time** for a prompt you want to enter on each run.

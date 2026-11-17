@@ -1,5 +1,10 @@
 # NodeUI companion releases
 
+## 2.1.2 — November 17, 2026
+
+- **Android + iOS** — Large folders load more efficiently. The companion reads detailed file metadata only for entries on the requested page.
+- **Android + iOS** — Uploads appear under their final filenames only after the transfer completes. Concurrent transfers with the same filename receive separate names.
+
 ## 2.1.1 — November 17, 2026
 
 - **Android + iOS:** Add Shared Input, Prompt Input, and Return Image to NodeUI for share-sheet and shortcut workflows, with ordered images and receipt-based results.

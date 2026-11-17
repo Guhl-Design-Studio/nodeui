@@ -2,7 +2,7 @@
 
 Use a **Shortcut** control to enter a new prompt in iOS's popup and generate an image without bringing NodeUI to the foreground. Configure the server and workflow once; each tap asks for a fresh prompt.
 
-This requires NodeUI’s updated Share/Shortcuts app build and companion 2.1.1. The new app build is being prepared as iOS 1.3; it is not included in the previously submitted iOS 1.2 build. Download the companion from the [latest release](https://github.com/Guhl-Design-Studio/nodeui/releases/latest).
+This requires NodeUI’s updated Share/Shortcuts app build and companion 2.1.1 or later. The new app build is being prepared as iOS 1.3; it is not included in the previously submitted iOS 1.2 build. Download the companion from the [latest release](https://github.com/Guhl-Design-Studio/nodeui/releases/latest).
 
 ## Prepare your workflow
 

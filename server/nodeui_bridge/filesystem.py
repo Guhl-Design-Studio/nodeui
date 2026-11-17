@@ -7,7 +7,7 @@ import errno
 import mimetypes
 import os
 from pathlib import Path, PureWindowsPath
-import shutil
+import stat
 import tempfile
 import sys
 from typing import BinaryIO
@@ -82,15 +82,16 @@ def resolve(root: Root, relative: str = "", *, must_exist: bool = True) -> Path:
 def file_info(root: Root, path: Path) -> dict:
     # Resolve before stat so an outward-pointing symlink never exposes target metadata.
     canonical = resolve(root, path.relative_to(root.path).as_posix())
-    stat = canonical.stat()
+    metadata = canonical.stat()
+    directory = stat.S_ISDIR(metadata.st_mode)
     return {
         "root": root.id,
         "path": path.relative_to(root.path).as_posix(),
         "name": path.name,
-        "isDirectory": canonical.is_dir(),
-        "size": 0 if canonical.is_dir() else stat.st_size,
-        "modified": stat.st_mtime,
-        "mimeType": "inode/directory" if canonical.is_dir() else (mimetypes.guess_type(path.name)[0] or "application/octet-stream"),
+        "isDirectory": directory,
+        "size": 0 if directory else metadata.st_size,
+        "modified": metadata.st_mtime,
+        "mimeType": "inode/directory" if directory else (mimetypes.guess_type(path.name)[0] or "application/octet-stream"),
     }
 
 
@@ -110,24 +111,37 @@ def list_files(root: Root, relative: str = "", *, offset: int = 0, limit: int = 
         if not location.is_dir():
             continue
         scope = Root(root.id, root.name, root.kind, base)
-        for path in location.iterdir():
-            key = os.path.normcase(path.name)
-            if path.name.startswith(".") or key in seen:
-                continue
-            # Reserve names before filtering so later locations cannot replace
-            # an inaccessible entry or change the first location's precedence.
-            seen.add(key)
-            if search and search.casefold() not in path.name.casefold():
-                continue
-            try:
-                entries.append(file_info(scope, path))
-            except (FileAccessError, FileNotFoundError, PermissionError):
-                continue
-    entries.sort(key=lambda value: (not value["isDirectory"], value["name"].casefold(), value["name"]))
+        with os.scandir(location) as children:
+            for child in children:
+                key = os.path.normcase(child.name)
+                if child.name.startswith(".") or key in seen:
+                    continue
+                # The first location owns the name even if the entry is inaccessible.
+                seen.add(key)
+                if search and search.casefold() not in child.name.casefold():
+                    continue
+                try:
+                    # On Windows scandir carries the reparse attributes from directory enumeration.
+                    reparse = os.name == "nt" and child.stat(follow_symlinks=False).st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                    if child.is_symlink() or reparse or ":" in child.name or "\\" in child.name:
+                        resolved = resolve(scope, Path(child.path).relative_to(base).as_posix())
+                        is_directory = resolved.is_dir()
+                    else:
+                        is_directory = child.is_dir(follow_symlinks=False)
+                    entries.append((not is_directory, child.name.casefold(), child.name, scope, child.path))
+                except (FileAccessError, FileNotFoundError, PermissionError):
+                    continue
+    entries.sort(key=lambda entry: entry[:3])
     offset = max(0, offset)
     limit = max(1, min(500, limit))
     end = min(offset + limit, len(entries))
-    return {"entries": entries[offset:end], "total": len(entries), "nextOffset": end if end < len(entries) else None}
+    page = []
+    for _, _, _, scope, path in entries[offset:end]:
+        try:
+            page.append(file_info(scope, Path(path)))
+        except (FileAccessError, FileNotFoundError, PermissionError):
+            continue
+    return {"entries": page, "total": len(entries), "nextOffset": end if end < len(entries) else None}
 
 
 def unique_destination(root: Root, filename: str, subfolder: str = "") -> Path:
@@ -192,6 +206,16 @@ def publish_file(source: Path, destination: Path) -> None:
             raise
 
 
+def publish_unique(source: Path, root: Root, filename: str, subfolder: str) -> Path:
+    while True:
+        destination = unique_destination(root, filename, subfolder)
+        try:
+            publish_file(source, destination)
+            return destination
+        except FileExistsError:
+            continue
+
+
 def check_publish_support(folder: Path) -> None:
     """Fail before streaming if neither safe publication strategy is supported."""
     with tempfile.NamedTemporaryFile(dir=folder, prefix=".nodeui-probe-", delete=False) as stream:
@@ -229,7 +253,6 @@ def delete_file(root: Root, relative: str) -> None:
 def write_upload(root: Root, filename: str, source: BinaryIO, subfolder: str = "", max_bytes: int = 100 * 1024 * 1024) -> dict:
     destination = unique_destination(root, filename, subfolder)
     temporary = None
-    created = False
     try:
         with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".nodeui-", delete=False) as output:
             temporary = Path(output.name)
@@ -239,16 +262,8 @@ def write_upload(root: Root, filename: str, source: BinaryIO, subfolder: str = "
                 if total > max_bytes:
                     raise FileAccessError("File exceeds the server upload limit")
                 output.write(chunk)
-        # Reserve the destination without clobbering another upload's result.
-        with destination.open("xb") as output:
-            created = True
-            with temporary.open("rb") as input_file:
-                shutil.copyfileobj(input_file, output)
+        destination = publish_unique(temporary, root, filename, subfolder)
         return file_info(root, destination)
-    except Exception:
-        if created:
-            destination.unlink(missing_ok=True)
-        raise
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

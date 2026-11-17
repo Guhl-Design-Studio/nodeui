@@ -20,7 +20,7 @@ from aiohttp import web
 import folder_paths
 from server import PromptServer
 
-from .filesystem import relative_parts, FileAccessError, Root, copy_to_input, delete_file, file_info, list_files, resolve, unique_destination, write_upload, publish_file, check_publish_support
+from .filesystem import relative_parts, FileAccessError, Root, copy_to_input, delete_file, file_info, list_files, resolve, unique_destination, write_upload, publish_unique, check_publish_support
 
 API_VERSION = 1
 PREFIX = "/nodeui/v1"
@@ -94,7 +94,7 @@ async def capabilities(request):
         thumbnails = True
     except ImportError:
         thumbnails = False
-    return web.json_response({"apiVersion": API_VERSION, "version": "2.1.1", "executionObservation": EXECUTION_OBSERVATION, "sharedWorkflows": True, "sharedWorkflowImageOutputs": True, "promptWorkflows": True, "resourceMonitoring": True, "downloads": True, "fileUploads": True, "fileDeletion": True, "roots": [download_root(root) for root in roots_for(request).values()], "thumbnails": thumbnails, "maxUploadBytes": 100 * 1024 * 1024})
+    return web.json_response({"apiVersion": API_VERSION, "version": "2.1.2", "executionObservation": EXECUTION_OBSERVATION, "sharedWorkflows": True, "sharedWorkflowImageOutputs": True, "promptWorkflows": True, "resourceMonitoring": True, "downloads": True, "fileUploads": True, "fileDeletion": True, "roots": [download_root(root) for root in roots_for(request).values()], "thumbnails": thumbnails, "maxUploadBytes": 100 * 1024 * 1024})
 
 
 def share_runs():
@@ -255,13 +255,7 @@ async def upload_file(request):
             await asyncio.to_thread(output.flush)
         # Keep retries and publication together so cancellation cannot leave an
         # unobserved worker publishing a file after the request has ended.
-        while True:
-            destination = unique_destination(target, request.query.get("filename", ""), request.query.get("path", ""))
-            try:
-                publish_file(temporary, destination)
-                break
-            except FileExistsError:
-                continue
+        destination = publish_unique(temporary, target, request.query.get("filename", ""), request.query.get("path", ""))
         return web.json_response(await asyncio.to_thread(file_info, target, destination), status=201)
     finally:
         if temporary is not None:
